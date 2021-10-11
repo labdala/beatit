@@ -302,6 +302,9 @@ class AnatomicalParameters{
 	double thresholdA_strip, thresholdB_strip;
 	double thresholdA_ripv, thresholdB_ripv;
 	double thresholdA_fossa, thresholdB_fossa;
+
+    // radius sphere LAA tip
+    double radius_LAA_tip;
 	libMesh::Gradient f0, s0, n0;
 
 	//Reinitialize variables
@@ -309,7 +312,7 @@ class AnatomicalParameters{
 				std::string, std::string, std::string, std::string,std::string,
 				std::string, std::string, std::string, std::string,std::string,
 				std::string, std::string, std::string, std::string,
-				std::string, std::string, std::string, std::string, std::string);
+				std::string, std::string, std::string, std::string, std::string, std::string);
 
 	// Define regions
 	int define_regions (std::vector<double> &);
@@ -322,14 +325,18 @@ void AnatomicalParameters::reinit(std::string Ithreshold_pv1, std::string thresh
 									std::string threshold_septum, std::string threshold_anterior, std::string threshold_posterior,
 									std::string threshold_carina1, std::string threshold_carina2, std::string threshold_lateral, std::string threshold_strip, std::string threshold_ripv,
 									std::string threshold_septum_bottom_rspv, std::string threshold_septum_bottom_ripv, std::string threshold_anterior_bottom,
-									std::string threshold_posterior_bottom, std::string threshold_fossa, std::string milano_aux)
+									std::string threshold_posterior_bottom, std::string threshold_fossa, std::string milano_aux, std::string radius_laa_tip_aux)
 	{
 	std::vector<double> tpv1, tpv2, tpv3, tpv4, tfloor, tlaa, tantra1_rspv, tantra1_ripv, tantra2, tseptum, tanterior, tposterior, tcarina1, tcarina2, tlateral, tstrip;
 	std::vector<double> tanterior_bottom, tposterior_bottom, tseptum_bottom_rspv, tseptum_bottom_ripv, tfossa, tripv;
 	std::vector<double> milano_vec;
+	std::vector<double> radius_LAA_tip_vec;
 
 	BeatIt::readList(milano_aux, milano_vec);
 	milano = milano_vec[0];
+
+	BeatIt::readList(radius_laa_tip_aux, radius_LAA_tip_vec);
+	radius_LAA_tip = radius_LAA_tip_vec[0];
 
 	BeatIt::readList(Ithreshold_pv1, tpv1);
     i_PV1          = tpv1[0];
@@ -1378,7 +1385,7 @@ void Poisson::assemble_poisson(EquationSystems& es,
     for (int jj = 0; jj < dirichlet_id_points.size(); jj++) {
     		   if(dirichlet_id_radius[jj]==49){
     			   p = dirichlet_id_points[jj];
-    			   radius = 0.0125; // small enough to enclose only one node
+    			   radius = anatomic_parameters.radius_LAA_tip; // small enough to enclose only one node
     			   x = p(0);
     			   y = p(1);
     			   z = p(2);
@@ -1494,6 +1501,8 @@ int main(int argc, char ** argv)
         std::string threshold_strip     = data("strip"    , " 1, 1, 0, 0, 0");
         std::string threshold_ripv     = data("ripv"      , " 0,0 , 0, 0, 0");
         std::string threshold_fossa     = data("fossa"    , " 1, 1, 0, 0, 0");
+        std::string radius_laa_tip_aux = data("radius_LAA_tip"    , "0.5");
+
 
         //Fiber type is Milano's paper?
         //https://doi.org/10.1016/j.cma.2020.113468
@@ -1506,7 +1515,7 @@ int main(int argc, char ** argv)
     								threshold_septum, threshold_anterior, threshold_posterior,
     								threshold_carina1, threshold_carina2, threshold_lateral, threshold_strip, threshold_ripv,
     								threshold_septum_bottom_rspv, threshold_septum_bottom_ripv, threshold_anterior_bottom,
-    								threshold_posterior_bottom, threshold_fossa, milano_aux);
+    								threshold_posterior_bottom, threshold_fossa, milano_aux, radius_laa_tip_aux);
 
 
     //--------------------

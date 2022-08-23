@@ -33,8 +33,9 @@
  *      Author: srossi
  */
 
-#ifndef SRC_ELECTROPHYSIOLOGY_MONODOMAIN_MONOWAVE_HPP_
-#define SRC_ELECTROPHYSIOLOGY_MONODOMAIN_MONOWAVE_HPP_
+
+#ifndef SRC_ELECTROPHYSIOLOGY_MONODOMAIN_MONODOMAIN_EXPLICIT_HPP_
+#define SRC_ELECTROPHYSIOLOGY_MONODOMAIN_MONODOMAIN_EXPLICIT_HPP_
 
 #include "Electrophysiology/ElectroSolver.hpp"
 
@@ -43,7 +44,7 @@ namespace BeatIt
 
 
 /// Class
-class Monowave : public virtual ElectroSolver
+class MonodomainExplicit : public virtual ElectroSolver
 {
 public:
     typedef libMesh::GMVIO Exporter;
@@ -52,9 +53,9 @@ public:
 
     /// Empty construcor
 //    Monodomain( libMesh::MeshBase & mesh );
-    Monowave( libMesh::EquationSystems& es );
-    ~Monowave();
-    void setup_systems(GetPot& data, std::string section = "monowave" );
+    MonodomainExplicit( libMesh::EquationSystems& es );
+    ~MonodomainExplicit();
+    void setup_systems(GetPot& data, std::string section = "monodomain_explicit" );
 
     void init_systems(double time);
 
@@ -86,11 +87,11 @@ public:
 };
 
 
-ElectroSolver* createMonowave( libMesh::EquationSystems& es );
+ElectroSolver* createMonodomainExplicit( libMesh::EquationSystems& es );
 
 namespace
 {
-    static bool register_monowave = BeatIt::ElectroSolver::ElectroFactory::Register("monowave", &createMonowave);
+    static bool register_monodomain_explicit = BeatIt::ElectroSolver::ElectroFactory::Register("monodomain_explicit", &createMonodomainExplicit);
 }
 
 } /* namespace BeatIt */

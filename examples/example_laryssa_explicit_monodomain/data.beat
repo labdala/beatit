@@ -31,11 +31,11 @@ scale = 1.0
 [../]
 
 # Models available 
-# bidomainbath, bidomain, monodomain, monowave
-model = monowave 
-section= monowave 
+# bidomainbath, bidomain, monodomain, monowave, monodomain_explicit
+model = monodomain_explicit
+section= monodomain_explicit 
 
-[monowave]
+[monodomain_explicit]
      output_folder = Output  # Default: Output
      time_integrator_order = 1 
      # If BlockID = 0, then comment tissue_blockIDs value 

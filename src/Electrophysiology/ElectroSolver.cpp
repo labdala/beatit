@@ -659,6 +659,70 @@ namespace BeatIt
 
             }
         }
+        else if(M_model == "monodomain_explicit")
+        {
+            ParameterSystem& intra_conductivity_system = M_equationSystems.get_system<ParameterSystem>("conductivity");
+
+            if ("function" == conductivity_type)
+            {
+                SpiritFunction intra_conductivity_func;
+                std::cout << "Dffi_data: " << Dffi_data << std::endl;
+                intra_conductivity_func.add_function(Dffi_data);
+                intra_conductivity_func.add_function(Dssi_data);
+                intra_conductivity_func.add_function(Dnni_data);
+                intra_conductivity_system.project_solution(&intra_conductivity_func);
+            }
+            //list
+            else
+            {
+                std::vector<double> Dffi;
+                BeatIt::readList(Dffi_data, Dffi);
+                std::vector<double> Dssi;
+                BeatIt::readList(Dssi_data, Dssi);
+                std::vector<double> Dnni;
+                BeatIt::readList(Dnni_data, Dnni);
+
+                std::string i_IDs = M_datafile(M_section + "/i_IDs", "-1");
+                std::cout << "i_IDs: " << i_IDs << std::flush;
+                std::vector<unsigned int> intracellular_IDs;
+                BeatIt::readList(i_IDs, intracellular_IDs);
+
+                const libMesh::MeshBase & mesh = M_equationSystems.get_mesh();
+
+                libMesh::MeshBase::const_element_iterator el_start = mesh.active_local_elements_begin();
+                libMesh::MeshBase::const_element_iterator el = mesh.active_local_elements_begin();
+                const libMesh::MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
+
+                const libMesh::DofMap & dof_map = intra_conductivity_system.get_dof_map();
+                std::vector<libMesh::dof_id_type> dof_indices;
+
+                for (; el != end_el; ++el)
+                {
+                    const libMesh::Elem * elem = *el;
+                    const unsigned int elem_id = elem->id();
+                    int subdomain_ID = elem->subdomain_id();
+                    dof_map.dof_indices(elem, dof_indices);
+
+                    double cDffi = 0.;
+                    double cDssi = 0.;
+                    double cDnni = 0.;
+                    for (int k = 0; k < intracellular_IDs.size(); ++k)
+                    {
+                        if (intracellular_IDs[k] == subdomain_ID)
+                        {
+                            cDffi = Dffi[k];
+                            cDssi = Dssi[k];
+                            cDnni = Dnni[k];
+                            break;
+                        }
+                    }
+                    intra_conductivity_system.solution->set(dof_indices[0], cDffi);
+                    intra_conductivity_system.solution->set(dof_indices[1], cDssi);
+                    intra_conductivity_system.solution->set(dof_indices[2], cDnni);
+                }
+
+            }
+        }
         else
         {
             ParameterSystem& intra_conductivity_system = M_equationSystems.get_system<ParameterSystem>("intra_conductivity");

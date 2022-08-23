@@ -27,9 +27,9 @@
  */
 
 /**
- * \file Monodomain.cpp
+ * \file MonodomainExplicit.cpp
  *
- * \class Monodomain
+ * \class MonodomainExplicit
  *
  * \brief This class provides a simple factory implementation
  *
@@ -96,7 +96,7 @@
 #include "Electrophysiology/IonicModels/TP06.hpp"
 #include "Electrophysiology/IonicModels/Cubic.hpp"
 
-#include "Electrophysiology/Monodomain/Monowave.hpp"
+#include "Electrophysiology/Monodomain/MonodomainExplicit.hpp"
 #include "Util/SpiritFunction.hpp"
 
 #include "libmesh/discontinuity_measure.h"
@@ -116,29 +116,29 @@ typedef libMesh::TransientLinearImplicitSystem ElectroSystem;
 typedef libMesh::TransientExplicitSystem IonicModelSystem;
 typedef libMesh::ExplicitSystem ParameterSystem;
 
-ElectroSolver* createMonowave(libMesh::EquationSystems &es)
+ElectroSolver* createMonodomainExplicit(libMesh::EquationSystems &es)
 {
-    return new Monowave(es);
+    return new MonodomainExplicit(es);
 }
 
-Monowave::Monowave(libMesh::EquationSystems &es) :
-        ElectroSolver(es, "monowave")
+MonodomainExplicit::MonodomainExplicit(libMesh::EquationSystems &es) :
+        ElectroSolver(es, "monodomain_explicit")
 {
 
 }
 
-Monowave::~Monowave()
+MonodomainExplicit::~MonodomainExplicit()
 {
 }
 
-void Monowave::setup_systems(GetPot &data, std::string section)
+void MonodomainExplicit::setup_systems(GetPot &data, std::string section)
 {
-    std::cout << "* MONOWAVE: Setting up data from section " << section << std::endl;
+    std::cout << "* MONODOMAIN EXP: Setting up data from section " << section << std::endl;
     // ///////////////////////////////////////////////////////////////////////
     // ///////////////////////////////////////////////////////////////////////
     // Starts by creating the equation systems
     // 1) ADR
-    std::cout << "* MONOWAVE: Creating new System for the monowave diffusion reaction equation" << std::endl;
+    std::cout << "* MONODOMAIN EXP: Creating new System for the monodomain diffusion reaction equation" << std::endl;
     ElectroSystem &monodomain_system = M_equationSystems.add_system < ElectroSystem > (M_model);
     // TO DO: Generalize to higher order
     monodomain_system.add_variable("Q", M_order, M_FEFamily);
@@ -167,7 +167,7 @@ void Monowave::setup_systems(GetPot &data, std::string section)
     // 2) ODEs
     setup_ODE_systems(data, section);
     // Add the applied current to this system
-    std::cout << "* MONOWAVE: Creating auxiliary explicit systems " << std::endl;
+    std::cout << "* MONODOMAIN EXP: Creating auxiliary explicit systems " << std::endl;
 
 //    M_ionicModelExporterNames.insert("istim");
     IonicModelSystem &cut_system = M_equationSystems.add_system < IonicModelSystem > ("cut");
@@ -177,13 +177,13 @@ void Monowave::setup_systems(GetPot &data, std::string section)
     // ///////////////////////////////////////////////////////////////////////
     // ///////////////////////////////////////////////////////////////////////
     // Distributed Parameters
-    std::cout << "* MONOWAVE: Creating parameters spaces " << std::endl;
+    std::cout << "* MONODOMAIN EXP: Creating parameters spaces " << std::endl;
     ParameterSystem &conductivity_system = M_equationSystems.add_system < ParameterSystem > ("conductivity");
     conductivity_system.add_variable("Dff", libMesh::CONSTANT, libMesh::MONOMIAL);
     conductivity_system.add_variable("Dss", libMesh::CONSTANT, libMesh::MONOMIAL);
     conductivity_system.add_variable("Dnn", libMesh::CONSTANT, libMesh::MONOMIAL);
     M_parametersExporterNames.insert("conductivity");
-    std::cout << "* MONOWAVE: Initializing equation systems " << std::endl;
+    std::cout << "* MONODOMAIN EXP: Initializing equation systems " << std::endl;
     // Initializing
     conductivity_system.init();
 //    M_equationSystems.init();
@@ -218,7 +218,7 @@ void Monowave::setup_systems(GetPot &data, std::string section)
     {
         M_anisotropy = it->second;
     }
-    std::cout << "* MONOWAVE: Parameters: " << std::endl;
+    std::cout << "* MONODOMAIN EXP: Parameters: " << std::endl;
     std::cout << "              Chi = " << Chi << std::endl;
     std::cout << "              Dff = " << Dff << std::endl;
     std::cout << "              Dss = " << Dss << std::endl;
@@ -227,87 +227,13 @@ void Monowave::setup_systems(GetPot &data, std::string section)
     std::cout << "              anisotropy = " << anisotropy << std::endl;
 }
 
-void Monowave::init_systems(double time)
+void MonodomainExplicit::init_systems(double time)
 {
-//    std::cout << "* MONOWAVE: initSystems: " << std::endl;
-//
-//    // WAVE
-//    ElectroSystem& wave_system = M_equationSystems.get_system<ElectroSystem>("wave");
-//
-//    std::string v_ic = M_datafile(M_section + "/ic", "NOIC");
-//    std::cout << "IC: " << v_ic << std::endl;
-//    if (v_ic != "NOIC")
-//    {
-//        std::cout << "* MONOWAVE: Found monodomain initial condition: " << v_ic << std::endl;
-//        SpiritFunction monodomain_ic;
-//        monodomain_ic.read(v_ic);
-//        M_equationSystems.parameters.set<libMesh::Real>("time") = time;
-//        wave_system.time = time;
-//        std::cout << "* MONOWAVE: Projecting initial condition to monodomain system ... " << std::flush;
-//        wave_system.project_solution(&monodomain_ic);
-//        std::cout << " done" << std::endl;
-//    }
-//    wave_system.solution->close();
-//    wave_system.old_local_solution->close();
-//    wave_system.older_local_solution->close();
-//    std::cout << "* MONOWAVE: Copying initial conditions to vectors at n nd at n-1... " << std::flush;
-//
-//    advance();
-//    std::cout << " done" << std::endl;
-//
-//    IonicModelSystem& istim_system = M_equationSystems.get_system<IonicModelSystem>("istim");
-//    std::cout << "* MONOWAVE: Initializing activation times to -1  ... " << std::flush;
-//    ParameterSystem& activation_times_system = M_equationSystems.get_system<ParameterSystem>("activation_times");
-//    auto first_local_index = activation_times_system.solution->first_local_index();
-//    auto last_local_index = activation_times_system.solution->last_local_index();
-//
-//    for (auto i = first_local_index; i < last_local_index; ++i)
-//    {
-//        activation_times_system.solution->set(i, -1.0);
-//    }
-//    std::cout << " done" << std::endl;
-//
-//    std::string fibers_data = M_datafile(M_section + "/fibers", "1.0, 0.0, 0.0");
-//    std::string sheets_data = M_datafile(M_section + "/sheets", "0.0, 1.0, 0.0");
-//    std::string xfibers_data = M_datafile(M_section + "/xfibers", "0.0, 0.0, 1.0");
-//
-//    SpiritFunction fibers_func;
-//    SpiritFunction sheets_func;
-//    SpiritFunction xfibers_func;
-//
-//    fibers_func.read(fibers_data);
-//    sheets_func.read(sheets_data);
-//    xfibers_func.read(xfibers_data);
-//
-//    ParameterSystem& fiber_system = M_equationSystems.get_system<ParameterSystem>("fibers");
-//    ParameterSystem& sheets_system = M_equationSystems.get_system<ParameterSystem>("sheets");
-//    ParameterSystem& xfiber_system = M_equationSystems.get_system<ParameterSystem>("xfibers");
-//
-//    std::cout << "* MONOWAVE: Creating fibers from function: " << fibers_data << std::flush;
-//    fiber_system.project_solution(&fibers_func);
-//    std::cout << " done" << std::endl;
-//    std::cout << "* MONOWAVE: Creating sheets from function: " << sheets_data << std::flush;
-//    sheets_system.project_solution(&sheets_func);
-//    std::cout << " done" << std::endl;
-//    std::cout << "* MONOWAVE: Creating xfibers from function: " << xfibers_data << std::flush;
-//    xfiber_system.project_solution(&xfibers_func);
-//    std::cout << " done" << std::endl;
-//
-//    ParameterSystem& conductivity_system = M_equationSystems.get_system<ParameterSystem>("conductivity");
-//    std::string Dff_data = M_datafile(M_section + "/Dff", "1.3342");
-//    std::string Dss_data = M_datafile(M_section + "/Dss", "0.17606");
-//    std::string Dnn_data = M_datafile(M_section + "/Dnn", "0.17606");
-//    SpiritFunction conductivity_func;
-//    conductivity_func.add_function(Dff_data);
-//    conductivity_func.add_function(Dss_data);
-//    conductivity_func.add_function(Dnn_data);
-//    conductivity_system.project_solution(&conductivity_func);
-
 }
 
-void Monowave::cut(double time, std::string f)
+void MonodomainExplicit::cut(double time, std::string f)
 {
-    std::cout << "* MONOWAVE: Cutting potential" << std::endl;
+    std::cout << "* MONODOMAIN EXP: Cutting potential" << std::endl;
 
     SpiritFunction func;
     func.read(f);
@@ -368,11 +294,11 @@ void Monowave::cut(double time, std::string f)
 
 }
 
-void Monowave::generate_fibers(const GetPot &data, const std::string &section)
+void MonodomainExplicit::generate_fibers(const GetPot &data, const std::string &section)
 {
-    std::cout << "* MONOWAVE: Creating fiber fields" << std::endl;
+    std::cout << "* MONODOMAIN EXP: Creating fiber fields" << std::endl;
 
-    std::cout << "* MONOWAVE: Solving Poisson porblem" << std::endl;
+    std::cout << "* MONODOMAIN EXP: Solving Poisson porblem" << std::endl;
 
     libMesh::Mesh new_mesh(dynamic_cast<libMesh::Mesh&>(M_equationSystems.get_mesh()));
     libMesh::EquationSystems es(new_mesh);
@@ -460,7 +386,7 @@ void Monowave::generate_fibers(const GetPot &data, const std::string &section)
         }
     };
 
-    std::cout << "* MONOWAVE: Computing rule-based fiber fields" << std::endl;
+    std::cout << "* MONODOMAIN EXP: Computing rule-based fiber fields" << std::endl;
 
 //    sol_ptr->print();
 
@@ -570,7 +496,7 @@ void Monowave::generate_fibers(const GetPot &data, const std::string &section)
 
 }
 
-void Monowave::amr(libMesh::MeshRefinement &mesh_refinement, const std::string &type)
+void MonodomainExplicit::amr(libMesh::MeshRefinement &mesh_refinement, const std::string &type)
 {
 //	std::cout << "* MONODOMAIN: starting AMR ... " << std::flush;
 //	BeatIt:Timer timer;
@@ -625,7 +551,7 @@ void Monowave::amr(libMesh::MeshRefinement &mesh_refinement, const std::string &
     delete p_error_estimator;
 }
 
-void Monowave::assemble_matrices(double dt)
+void MonodomainExplicit::assemble_matrices(double dt)
 {
     if (M_FEFamily == libMesh::MONOMIAL || M_FEFamily == libMesh::L2_LAGRANGE)
         assemble_dg_matrices(dt);
@@ -635,7 +561,7 @@ void Monowave::assemble_matrices(double dt)
     }
 
 }
-void Monowave::assemble_cg_matrices(double dt)
+void MonodomainExplicit::assemble_cg_matrices(double dt)
 {
     std::cout << "* MONODOMAIN: Assembling CG matrices ... " << std::endl;
     using std::unique_ptr;
@@ -851,17 +777,12 @@ void Monowave::assemble_cg_matrices(double dt)
         }
 
         // Conductivity tensor
-        std::cout << "Dff, " << std::flush;
         double Dff = (*conductivity_system.solution)(dof_indices_fibers[0]);
-        std::cout << "Dss, " << std::flush;
         double Dss = (*conductivity_system.solution)(dof_indices_fibers[1]);
-        std::cout << "Dnn, " << std::flush;
         double Dnn = (*conductivity_system.solution)(dof_indices_fibers[2]);
-        std::cout << "done.  " << std::flush;
 
         setup_local_conductivity(D0, Dff, Dss, Dnn, f0, s0, n0);
         D0 /= Chi;
-        std::cout << "loop over qps  " << std::endl;
 
 //        int random_el = std::rand() % 100 + 1;
 //        if(random_el <= 60)
@@ -963,7 +884,7 @@ void Monowave::assemble_cg_matrices(double dt)
     form_system_matrix(dt, false, "lumped_mass");
 }
 
-void Monowave::setup_local_conductivity(libMesh::TensorValue<double> &D0, double Dff, double Dss, double Dnn, double *f0, double *s0, double *n0)
+void MonodomainExplicit::setup_local_conductivity(libMesh::TensorValue<double> &D0, double Dff, double Dss, double Dnn, double *f0, double *s0, double *n0)
 {
     const unsigned int max_dim = 3;
     switch (M_anisotropy)
@@ -1008,7 +929,7 @@ void Monowave::setup_local_conductivity(libMesh::TensorValue<double> &D0, double
     }
 }
 
-void Monowave::assemble_dg_matrices(double dt)
+void MonodomainExplicit::assemble_dg_matrices(double dt)
 {
     std::cout << "* MONODOMAIN: Assembling DG matrices ... " << std::endl;
     using std::unique_ptr;
@@ -1500,11 +1421,11 @@ void Monowave::assemble_dg_matrices(double dt)
     form_system_matrix(dt, false, "lumped_mass");
 }
 
-void Monowave::form_system_matrix(double dt, bool /*useMidpoint */, const std::string &mass)
+void MonodomainExplicit::form_system_matrix(double dt, bool /*useMidpoint */, const std::string &mass)
 {
     ElectroSystem &monodomain_system = M_equationSystems.get_system < ElectroSystem > (M_model);
 // WAVE
-    std::cout << "* MONOWAVE: forming system matrix using the " << mass << " matrix" << std::endl;
+    std::cout << "* MONODOMAIN EXP: forming system matrix using the " << mass << " matrix" << std::endl;
     M_systemMass = mass;
     double Cm = 1.0; // M_ionicModelPtr->membraneCapacitance();
 
@@ -1524,9 +1445,14 @@ void Monowave::form_system_matrix(double dt, bool /*useMidpoint */, const std::s
 // Matrix part
 //    if(tau>0)
     {
-        // S = Cm M Q^n+1 + tau / (c * dt) * Cm * M dQ + c dt K Q^n+1
-        monodomain_system.matrix->add(Cm * (1.0 + tau / (cdt)), monodomain_system.get_matrix(mass));
-        monodomain_system.matrix->add(cdt, monodomain_system.get_matrix("stiffness"));
+        // TEST --------------------------------
+        // S = Cm M
+        monodomain_system.matrix->add(Cm , monodomain_system.get_matrix(mass));
+
+        // //---------------------------------------
+        // // S = Cm M Q^n+1 + tau / (c * dt) * Cm * M dQ + c dt K Q^n+1
+        // monodomain_system.matrix->add(Cm * (1.0 + tau / (cdt)), monodomain_system.get_matrix(mass));
+        // monodomain_system.matrix->add(cdt, monodomain_system.get_matrix("stiffness"));
     }
 //    else
 //    {
@@ -1535,7 +1461,7 @@ void Monowave::form_system_matrix(double dt, bool /*useMidpoint */, const std::s
 //    }
 }
 
-void Monowave::form_system_rhs(double dt, bool useMidpoint, const std::string &mass)
+void MonodomainExplicit::form_system_rhs(double dt, bool useMidpoint, const std::string &mass)
 {
     MonodomainSystem &monodomain_system = M_equationSystems.get_system < MonodomainSystem > (M_model);
 // WAVE
@@ -1588,7 +1514,6 @@ void Monowave::form_system_rhs(double dt, bool useMidpoint, const std::string &m
         // adding it to the system RHS
         monodomain_system.get_matrix(mass).vector_mult_add(*monodomain_system.rhs, total_current);
 
-        //  if(tau>0)
         {
             // Second we compute the time derivative term
             // Cm * tau / cdt * M * ( 4/3 Q^n - 1/3 Q^n-1 )
@@ -1623,82 +1548,27 @@ void Monowave::form_system_rhs(double dt, bool useMidpoint, const std::string &m
     }
     else
     {
-        // SBDF1
+        // TEST----------------------------------------------
+        // RHS = (1+dt*K)*V^n - dt*M*I^n - M*Istim
         double cdt = dt;
-        // RHS WAVE = Cm * tau / cdt * M * Q^n
-        //          - K * Z^n                            // Z^n = V^n
-        //          - M * I^n - tau * M * dI^n - M * Istim
-
-        // First compute -(I^n + tau * dI^n + Istim)
-        // I^n
+        // -I^n
         total_current.add(-1.0, *iion_system.solution);
-        // tau * dI^n
-        total_current.add(-tau, iion_system.get_vector("diion"));
-        // Istim
+        // -Istim
         total_current.add(-1.0, *istim_system.solution);
-
-        // Then compute M * ( I^n + tau * dI^n + Istim ) = M * total_current
-        // adding it to the system RHS
+        // Then compute M * ( - I^n  + Istim ) = M * total_current
         monodomain_system.get_matrix(mass).vector_mult_add(*monodomain_system.rhs, total_current);
-
-        //if(tau>0)
-        {
-            // Second we compute the time derivative term
-            // Cm * tau / cdt * M * Q^n
-            //
-            // We store Cm * tau / cdt * Q^n in aux1
-            aux1.add(Cm * tau / cdt, *monodomain_system.old_local_solution);
-            // Then we added to the RHS
-            // M * aux1
-            monodomain_system.get_matrix(M_systemMass).vector_mult_add(*monodomain_system.rhs, aux1);
-
-            // Third compute - K * Z^n
-            // We store -Z^n in aux2, but
-            aux2.add(-1.0, *wave_system.old_local_solution);
-            // Then we added to the RHS
-            // K * aux2
-            monodomain_system.get_matrix("stiffness").vector_mult_add(*monodomain_system.rhs, aux2);
-        }
-//            else
-//            {
-//                // Second we compute the time derivative term
-//                // Cm * tau / cdt * M * Q^n
-//                //
-//                // We store Cm * tau / cdt * Q^n in aux1
-//                aux1.add(Cm/cdt, *monodomain_system.old_local_solution);
-//                // Then we added to the RHS
-//                // M * aux1
-//                monodomain_system.get_matrix(M_systemMass).vector_mult_add(*monodomain_system.rhs, aux1);
-//            }
+        //dt * V^n
+        aux1.add(cdt,*monodomain_system.old_local_solution);
+        // K * dt * V^n
+        monodomain_system.get_matrix("stiffness").vector_mult_add(*monodomain_system.rhs, aux1);
+        //+ V^n
+        aux1.add(1.0,*monodomain_system.old_local_solution);
+        //Sum it all to RHS
+        *monodomain_system.rhs+= aux1;
     }
-//    monodomain_system.get_matrix(mass).vector_mult_add(*monodomain_system.rhs, *iion_system.solution);
-//
-//    monodomain_system.get_matrix(mass).vector_mult_add(*monodomain_system.rhs, *istim_system.solution);
-//    if (M_equationType == EquationType::Wave)
-//    {
-//        //std::cout << "Equation type: Wave" << std::endl;
-//        //iion_system.get_vector("diion").pointwise_mult(*monodomain_system.older_local_solution, iion_system.get_vector("diion"));
-//        iion_system.get_vector("diion").scale(tau);
-//        monodomain_system.get_matrix(mass).vector_mult_add(*monodomain_system.rhs, iion_system.get_vector("diion"));
-//        monodomain_system.rhs->scale(dt);
-//
-//        //*monodomain_system.old_local_solution = *monodomain_system.older_local_solution;
-//        monodomain_system.get_vector("aux1") = *monodomain_system.old_local_solution;
-//        // aux1 = + tau  * M * Q^n
-//        monodomain_system.get_vector("aux1").scale(tau * Cm);
-//
-//        //std::cout << "Equation type: Wave" << std::endl;
-//        monodomain_system.get_matrix(M_systemMass).vector_mult_add(*monodomain_system.rhs, monodomain_system.get_vector("aux1"));
-//
-//        // - dt  * K * V^n
-//        monodomain_system.get_vector("aux2") = *wave_system.old_local_solution;
-//        monodomain_system.get_vector("aux2").scale(-dt);
-//        monodomain_system.get_matrix("stiffness").vector_mult_add(*monodomain_system.rhs, monodomain_system.get_vector("aux2"));
-//        //std::cout << "Equation type: Wave" << std::endl;
-
 }
 
-void Monowave::solve_diffusion_step(double dt, double time, bool useMidpoint, const std::string &mass, bool reassemble)
+void MonodomainExplicit::solve_diffusion_step(double dt, double time, bool useMidpoint, const std::string &mass, bool reassemble)
 {
 // FORM RHS
     ElectroSystem &monodomain_system = M_equationSystems.get_system < ElectroSystem > (M_model);
@@ -1732,9 +1602,6 @@ void Monowave::solve_diffusion_step(double dt, double time, bool useMidpoint, co
 // std::cout << "solve done" << std::endl;
 // WAVE
     ElectroSystem &wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
-//   if (M_equationType == EquationType::Wave)
-//   {
-//if(tau>0)
     {
         if (0 < M_timestep_counter && TimeIntegrator::SecondOrderIMEX == M_timeIntegrator)
         {
@@ -1748,15 +1615,16 @@ void Monowave::solve_diffusion_step(double dt, double time, bool useMidpoint, co
 
         else
         {
+            // *wave_system.solution = *monodomain_system.solution;
+            // wave_system.solution->scale(dt);
+            // *wave_system.solution += *wave_system.old_local_solution;
+            
             *wave_system.solution = *monodomain_system.solution;
             wave_system.solution->scale(dt);
             *wave_system.solution += *wave_system.old_local_solution;
+
         }
     }
-//    else
-//    {
-//        *wave_system.solution = *monodomain_system.solution;
-//    }
 
     M_timestep_counter++;
 }

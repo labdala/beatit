@@ -167,15 +167,15 @@ int main(int argc, char ** argv)
 
     // Create the Electrophyiosiology model based on the input file
     //
-    //   model = monowave
+    //   model = monodomain_explicit
     //   # The input parameters of the model are written
     //   # in a section with the same name as 'model'
-    //   [monowave]
+    //   [monodomain_explicit]
     //       # PARAMETERS HERE
     //   [../]
     //
     // Read the model from the input file
-    std::string model = data("model", "monowave");
+    std::string model = data("model", "monodomain_explicit");
     std::cout << "Create Electrophysiology model ..." << std::endl;
     // Create the model
     BeatIt::ElectroSolver* solver = BeatIt::ElectroSolver::ElectroFactory::Create(model, es);

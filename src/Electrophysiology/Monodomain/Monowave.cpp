@@ -851,17 +851,12 @@ void Monowave::assemble_cg_matrices(double dt)
         }
 
         // Conductivity tensor
-        std::cout << "Dff, " << std::flush;
         double Dff = (*conductivity_system.solution)(dof_indices_fibers[0]);
-        std::cout << "Dss, " << std::flush;
         double Dss = (*conductivity_system.solution)(dof_indices_fibers[1]);
-        std::cout << "Dnn, " << std::flush;
         double Dnn = (*conductivity_system.solution)(dof_indices_fibers[2]);
-        std::cout << "done.  " << std::flush;
 
         setup_local_conductivity(D0, Dff, Dss, Dnn, f0, s0, n0);
         D0 /= Chi;
-        std::cout << "loop over qps  " << std::endl;
 
 //        int random_el = std::rand() % 100 + 1;
 //        if(random_el <= 60)

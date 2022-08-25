@@ -178,7 +178,7 @@ int main(int argc, char ** argv)
     std::string model = data("model", "monodomain_explicit");
     std::cout << "Create Electrophysiology model ..." << std::endl;
     // Create the model
-    BeatIt::ElectroSolver* solver = BeatIt::ElectroSolver::ElectroFactory::Create(model, es);
+    BeatIt::ElectroSolverExplicit* solver = BeatIt::ElectroSolverExplicit::ElectroFactory::Create(model, es);
     // Setup the EP model using the input file
     std::cout << "Calling setup..." << std::endl;
     solver->setup(data, model);

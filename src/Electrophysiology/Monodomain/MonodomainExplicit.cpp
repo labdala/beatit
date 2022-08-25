@@ -116,13 +116,13 @@ typedef libMesh::TransientLinearImplicitSystem ElectroSystem;
 typedef libMesh::TransientExplicitSystem IonicModelSystem;
 typedef libMesh::ExplicitSystem ParameterSystem;
 
-ElectroSolver* createMonodomainExplicit(libMesh::EquationSystems &es)
+ElectroSolverExplicit* createMonodomainExplicit(libMesh::EquationSystems &es)
 {
     return new MonodomainExplicit(es);
 }
 
 MonodomainExplicit::MonodomainExplicit(libMesh::EquationSystems &es) :
-        ElectroSolver(es, "monodomain_explicit")
+        ElectroSolverExplicit(es, "monodomain_explicit")
 {
 
 }
@@ -205,13 +205,13 @@ void MonodomainExplicit::setup_systems(GetPot &data, std::string section)
     double tau = M_datafile(section + "/tau", 0.0);
     M_equationSystems.parameters.set<double>("tau") = tau;
     if (tau >= 0)
-        M_equationType = EquationType::Wave;
+        M_equationType = EquationTypeExplicit::Wave;
     std::string anisotropy = M_datafile(section + "/anisotropy", "orhotropic");
-    std::map<std::string, Anisotropy> aniso_map;
+    std::map<std::string, AnisotropyExplicit> aniso_map;
 
-    aniso_map["orthotropic"] = Anisotropy::Orthotropic;
-    aniso_map["isotropic"] = Anisotropy::Isotropic;
-    aniso_map["transverse"] = Anisotropy::TransverselyIsotropic;
+    aniso_map["orthotropic"] = AnisotropyExplicit::Orthotropic;
+    aniso_map["isotropic"] = AnisotropyExplicit::Isotropic;
+    aniso_map["transverse"] = AnisotropyExplicit::TransverselyIsotropic;
 
     auto it = aniso_map.find(anisotropy);
     if( it != aniso_map.end())
@@ -268,7 +268,7 @@ void MonodomainExplicit::cut(double time, std::string f)
         cut_value = (*cut_system.solution)(index);
         if (cut_value < 0.1)
         {
-            if (M_equationType == EquationType::ReactionDiffusion)
+            if (M_equationType == EquationTypeExplicit::ReactionDiffusion)
             {
                 wave_system.solution->set(index, init_val[0]);
                 monodomain_system.solution->set(index, init_val[0]);
@@ -703,11 +703,11 @@ void MonodomainExplicit::assemble_cg_matrices(double dt)
 
         switch (M_anisotropy)
         {
-            case Anisotropy::Isotropic:
+            case AnisotropyExplicit::Isotropic:
             {
                 break;
             }
-            case Anisotropy::TransverselyIsotropic:
+            case AnisotropyExplicit::TransverselyIsotropic:
             {
                 std::cout << "f0, " << std::flush;
                 f0[0] = (*fiber_system.solution)(dof_indices_fibers[0]);
@@ -718,7 +718,7 @@ void MonodomainExplicit::assemble_cg_matrices(double dt)
                 std::cout << "done.  " << std::flush;
                 break;
             }
-            case Anisotropy::Orthotropic:
+            case AnisotropyExplicit::Orthotropic:
             default:
             {
                 f0[0] = (*fiber_system.solution)(dof_indices_fibers[0]);
@@ -798,7 +798,7 @@ void MonodomainExplicit::setup_local_conductivity(libMesh::TensorValue<double> &
     const unsigned int max_dim = 3;
     switch (M_anisotropy)
     {
-    case Anisotropy::Isotropic:
+    case AnisotropyExplicit::Isotropic:
     {
         for (int idim = 0; idim < max_dim; ++idim)
         {
@@ -808,7 +808,7 @@ void MonodomainExplicit::setup_local_conductivity(libMesh::TensorValue<double> &
         break;
     }
 
-    case Anisotropy::TransverselyIsotropic:
+    case AnisotropyExplicit::TransverselyIsotropic:
     {
         for (int idim = 0; idim < max_dim; ++idim)
         {
@@ -822,7 +822,7 @@ void MonodomainExplicit::setup_local_conductivity(libMesh::TensorValue<double> &
         break;
     }
 
-    case Anisotropy::Orthotropic:
+    case AnisotropyExplicit::Orthotropic:
     default:
     {
         for (int idim = 0; idim < max_dim; ++idim)
@@ -959,7 +959,7 @@ void MonodomainExplicit::solve_diffusion_step(double dt, double time, bool useMi
 // WAVE
     ElectroSystem &wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
     {
-        if (0 < M_timestep_counter && TimeIntegrator::SecondOrderIMEX == M_timeIntegrator)
+        if (0 < M_timestep_counter && TimeIntegratorExplicit::SecondOrderIMEX == M_timeIntegrator)
         {
             // Use BDF2
             // V^n+1 = 4/3 V^n - 1/3 V^n + 2/3 dt * Q^n+1

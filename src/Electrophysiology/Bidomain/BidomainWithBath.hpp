@@ -37,6 +37,7 @@
 #define SRC_ELECTROPHYSIOLOGY_Bidomain_HPP_
 
 #include "Electrophysiology/ElectroSolver.hpp"
+#include "Electrophysiology/ElectroSolverExplicit.hpp"
 
 namespace BeatIt
 {

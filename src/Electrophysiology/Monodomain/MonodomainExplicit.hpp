@@ -34,17 +34,17 @@
  */
 
 
-#ifndef SRC_ELECTROPHYSIOLOGY_MONODOMAIN_MONODOMAIN_EXPLICIT_HPP_
-#define SRC_ELECTROPHYSIOLOGY_MONODOMAIN_MONODOMAIN_EXPLICIT_HPP_
+#ifndef SRC_ELECTROPHYSIOLOGY_MONODOMAIN_EXPLICIT_HPP_
+#define SRC_ELECTROPHYSIOLOGY_MONODOMAIN_EXPLICIT_HPP_
 
-#include "Electrophysiology/ElectroSolver.hpp"
+#include "Electrophysiology/ElectroSolverExplicit.hpp"
 
 namespace BeatIt
 {
 
 
 /// Class
-class MonodomainExplicit : public virtual ElectroSolver
+class MonodomainExplicit : public virtual ElectroSolverExplicit
 {
 public:
     typedef libMesh::GMVIO Exporter;
@@ -86,14 +86,14 @@ public:
 };
 
 
-ElectroSolver* createMonodomainExplicit( libMesh::EquationSystems& es );
+ElectroSolverExplicit* createMonodomainExplicit( libMesh::EquationSystems& es );
 
 namespace
 {
-    static bool register_monodomain_explicit = BeatIt::ElectroSolver::ElectroFactory::Register("monodomain_explicit", &createMonodomainExplicit);
+    static bool register_monodomain_explicit = BeatIt::ElectroSolverExplicit::ElectroFactory::Register("monodomain_explicit", &createMonodomainExplicit);
 }
 
 } /* namespace BeatIt */
 
 
-#endif /* SRC_ELECTROPHYSIOLOGY_MONODOMAIN_MONOWAVE_HPP_ */
+#endif /* SRC_ELECTROPHYSIOLOGY_MONODOMAIN_EXPLICIT_HPP_ */

@@ -64,7 +64,6 @@ public:
 
     void cut(double time, std::string f);
     void assemble_matrices(double dt = 1.0);
-    void assemble_dg_matrices(double dt = 1.0);
     void assemble_cg_matrices(double dt = 1.0);
     void setup_local_conductivity(libMesh::TensorValue<double>& D0,
                                            double Dff, double Dss, double Dnn,

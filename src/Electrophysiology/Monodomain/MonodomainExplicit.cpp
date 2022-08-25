@@ -498,15 +498,7 @@ void MonodomainExplicit::generate_fibers(const GetPot &data, const std::string &
 
 void MonodomainExplicit::amr(libMesh::MeshRefinement &mesh_refinement, const std::string &type)
 {
-//	std::cout << "* MONODOMAIN: starting AMR ... " << std::flush;
-//	BeatIt:Timer timer;
-//	std::cout << "Creating Error Vector " << std::endl;
-//	timer.start();
     libMesh::ErrorVector error;
-//	timer.stop();
-//	timer.print(std::cout);
-//	std::cout << "Creating Error Estimator " << std::endl;
-//	timer.restart();
     libMesh::ErrorEstimator *p_error_estimator;
     if ("kelly" == type)
         p_error_estimator = new libMesh::KellyErrorEstimator;
@@ -514,54 +506,24 @@ void MonodomainExplicit::amr(libMesh::MeshRefinement &mesh_refinement, const std
         p_error_estimator = new libMesh::DiscontinuityMeasure;
     else
         p_error_estimator = new libMesh::LaplacianErrorEstimator;
-//	timer.stop();
-//	timer.print(std::cout);
-//	 libMesh::KellyErrorEstimator error_estimator;
-//	 libMesh::LaplacianErrorEstimator error_estimator;
     ElectroSystem &monodomain_system = M_equationSystems.get_system < ElectroSystem > (M_model);
     // WAVE
     ElectroSystem &wave_system = M_equationSystems.add_system < ElectroSystem > ("wave");
 
-//	std::cout << "Estimating Monodomain Error  " << std::endl;
-//	timer.restart();
     p_error_estimator->estimate_error(wave_system, error);
-//	timer.stop();
-//	timer.print(std::cout);
-    // Flag elements to be refined and coarsened
-//	std::cout << "Flagging Elements  " << std::endl;
-//	timer.restart();
     mesh_refinement.flag_elements_by_error_fraction(error);
-//	timer.stop();
-//	timer.print(std::cout);
-//
-//	std::cout << "Refine and Coarsen  " << std::endl;
-//	std::cout << " coarsen and refine ...  " << std::flush;
-//	timer.restart();
     mesh_refinement.refine_and_coarsen_elements();
-//	timer.stop();
-//	timer.print(std::cout);
-//	std::cout << " reinit ...  " << std::flush;
-//	std::cout << "Reinit system  " << std::endl;
-//	timer.restart();
     M_equationSystems.reinit();
-//	timer.stop();
-//	timer.print(std::cout);
-//	timer.restart();
-//	std::cout << " done  " << std::endl;
     delete p_error_estimator;
 }
 
 void MonodomainExplicit::assemble_matrices(double dt)
 {
-    if (M_FEFamily == libMesh::MONOMIAL || M_FEFamily == libMesh::L2_LAGRANGE)
-        assemble_dg_matrices(dt);
-    else
-    {
-        assemble_cg_matrices(dt);
-    }
-
+    assemble_cg_matrices(dt);
 }
-void MonodomainExplicit::assemble_cg_matrices(double dt)
+
+// Continuous Galerkin
+void MonodomainExplicit::assemble_cg_matrices(double dt) 
 {
     std::cout << "* MONODOMAIN: Assembling CG matrices ... " << std::endl;
     using std::unique_ptr;
@@ -581,8 +543,6 @@ void MonodomainExplicit::assemble_cg_matrices(double dt)
     monodomain_system.get_matrix("stiffness").zero();
     monodomain_system.get_vector("lumped_mass_vector").zero();
 
-//     MatSetOption( (dynamic_cast<libMesh::PetscMatrix<libMesh::Number> >(monodomain_system.get_matrix("stiffness"))).mat(), MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
-//     MatSetOption( (dynamic_cast<libMesh::PetscMatrix<libMesh::Number> * >(monodomain_system.matrix))->mat(), MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
 
     ParameterSystem &fiber_system = M_equationSystems.get_system < ParameterSystem > ("fibers");
     ParameterSystem &sheets_system = M_equationSystems.get_system < ParameterSystem > ("sheets");
@@ -784,12 +744,6 @@ void MonodomainExplicit::assemble_cg_matrices(double dt)
         setup_local_conductivity(D0, Dff, Dss, Dnn, f0, s0, n0);
         D0 /= Chi;
 
-//        int random_el = std::rand() % 100 + 1;
-//        if(random_el <= 60)
-//        {
-//            D0 *= 0.0;
-//        }
-
         // Assemble Mass terms
         for (unsigned int qp = 0; qp < qrule_mass.n_points(); qp++)
         {
@@ -821,51 +775,6 @@ void MonodomainExplicit::assemble_cg_matrices(double dt)
                 }
             }
         }
-
-//        int random_el = rand() % 100 + 1;
-//        if(random_el <= 5)
-//        {
-//        // TEST CONDUCTION BLOCKS
-//        for (unsigned int side = 0; side < elem->n_sides(); side++)
-//        {
-//            int random = rand() % 100 + 1;
-//            std::cout << "random: " << random << std::endl;
-//            if (random <= 2)
-//            {
-//                const std::vector<libMesh::Real> & JxW_face = fe_face->get_JxW();
-//                const std::vector<std::vector<libMesh::Real> > & phi_face = fe_face->get_phi();
-//                const std::vector<libMesh::Point> & qface_point = fe_face->get_xyz();
-//                const std::vector<std::vector<libMesh::RealGradient> > & dphi_face = fe_face->get_dphi();
-//                const std::vector<libMesh::Point>&  normals = fe_face->get_normals();
-//                fe_face->reinit(elem, side);
-//                // The location on the boundary of the current
-//                // face quadrature point.
-//
-//                for (unsigned int qp=0; qp<qface.n_points(); qp++)
-//                {
-//
-//                    const double xf = qface_point[qp](0);
-//                    const double yf = qface_point[qp](1);
-//                    const double zf = qface_point[qp](2);
-//                   // if(yf > 0.3 && xf > 0.5)
-//                {
-//
-//                double beta = 1e8;
-//
-//                    for (unsigned int i=0; i<phi_face.size(); i++)
-//                    {
-//                        for (unsigned int j=0; j<phi_face.size(); j++)
-//                        {
-//                            Ke(i,j) += JxW_face[qp] * beta * phi_face[i][qp] * phi_face[j][qp];
-//                        }
-//                    }
-//                }
-//                }
-//            }
-//        }
-//            if (random <= 2) break;
-//
-//        }
 
         monodomain_system.get_matrix("stiffness").add_matrix(Ke, dof_indices);
     }
@@ -929,497 +838,6 @@ void MonodomainExplicit::setup_local_conductivity(libMesh::TensorValue<double> &
     }
 }
 
-void MonodomainExplicit::assemble_dg_matrices(double dt)
-{
-    std::cout << "* MONODOMAIN: Assembling DG matrices ... " << std::endl;
-    using std::unique_ptr;
-
-    const libMesh::MeshBase &mesh = M_equationSystems.get_mesh();
-    const unsigned int dim = mesh.mesh_dimension();
-    const unsigned int max_dim = 3;
-    const libMesh::Real Chi = M_equationSystems.parameters.get < libMesh::Real > ("Chi");
-
-// Get a reference to the LinearImplicitSystem we are solving
-    ElectroSystem &monodomain_system = M_equationSystems.get_system < ElectroSystem > (M_model);
-    IonicModelSystem &ionic_model_system = M_equationSystems.get_system < IonicModelSystem > ("ionic_model");
-
-    monodomain_system.get_matrix("mass").zero();
-    monodomain_system.get_matrix("lumped_mass").zero();
-    monodomain_system.get_matrix("high_order_mass").zero();
-    monodomain_system.get_matrix("stiffness").zero();
-    monodomain_system.get_vector("lumped_mass_vector").zero();
-
-//     MatSetOption( (dynamic_cast<libMesh::PetscMatrix<libMesh::Number> >(monodomain_system.get_matrix("stiffness"))).mat(), MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
-//     MatSetOption( (dynamic_cast<libMesh::PetscMatrix<libMesh::Number> * >(monodomain_system.matrix))->mat(), MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
-
-    ParameterSystem &fiber_system = M_equationSystems.get_system < ParameterSystem > ("fibers");
-    ParameterSystem &sheets_system = M_equationSystems.get_system < ParameterSystem > ("sheets");
-    ParameterSystem &xfiber_system = M_equationSystems.get_system < ParameterSystem > ("xfibers");
-    ParameterSystem &conductivity_system = M_equationSystems.get_system < ParameterSystem > ("conductivity");
-
-// A reference to the  DofMap object for this system.  The  DofMap
-// object handles the index translation from node and element numbers
-// to degree of freedom numbers.  We will talk more about the  DofMap
-// in future examples.
-    const libMesh::DofMap &dof_map_monodomain = monodomain_system.get_dof_map();
-    const libMesh::DofMap &dof_map_fibers = fiber_system.get_dof_map();
-
-// Get a constant reference to the Finite Element type
-// for the first (and only) variable in the system.
-    libMesh::FEType fe_type_qp1 = dof_map_monodomain.variable_type(0);
-    libMesh::FEType fe_type_qp2 = dof_map_monodomain.variable_type(0);
-
-// Build a Finite Element object of the specified type.  Since the
-// FEBase::build() member dynamically creates memory we will
-// store the object as a std::unique_ptr<FEBase>.  This can be thought
-// of as a pointer that will clean up after itself.  Introduction Example 4
-// describes some advantages of  std::unique_ptr's in the context of
-// quadrature rules.
-    std::unique_ptr < libMesh::FEBase > fe_qp1(libMesh::FEBase::build(dim, fe_type_qp1));
-    std::unique_ptr < libMesh::FEBase > fe_qp2(libMesh::FEBase::build(dim, fe_type_qp2));
-
-// A 5th order Gauss quadrature rule for numerical integration.
-    libMesh::QGauss qrule_stiffness(dim, libMesh::SECOND);
-// A 5th order Gauss quadrature rule for numerical integration.
-    libMesh::QGauss qrule_mass(dim, libMesh::THIRD);
-
-// Tell the finite element object to use our quadrature rule.
-    fe_qp1->attach_quadrature_rule(&qrule_stiffness);
-    fe_qp2->attach_quadrature_rule(&qrule_mass);
-// Here we define some references to cell-specific data that
-// will be used to assemble the linear system.
-//
-// The element Jacobian * quadrature weight at each integration point.
-    const std::vector<libMesh::Real> &JxW_qp1 = fe_qp1->get_JxW();
-    const std::vector<libMesh::Real> &JxW_qp2 = fe_qp2->get_JxW();
-
-// The physical XY locations of the quadrature points on the element.
-// These might be useful for evaluating spatially varying material
-// properties at the quadrature points.
-    const std::vector<libMesh::Point> &q_point_qp1 = fe_qp1->get_xyz();
-    const std::vector<libMesh::Point> &q_point_qp2 = fe_qp2->get_xyz();
-
-// The element shape functions evaluated at the quadrature points.
-    const std::vector<std::vector<libMesh::Real> > &phi_qp1 = fe_qp1->get_phi();
-    const std::vector<std::vector<libMesh::Real> > &phi_qp2 = fe_qp2->get_phi();
-
-// The element shape function gradients evaluated at the quadrature
-// points.
-    const std::vector<std::vector<libMesh::RealGradient> > &dphi_qp1 = fe_qp1->get_dphi();
-    const std::vector<std::vector<libMesh::RealGradient> > &dphi_qp2 = fe_qp2->get_dphi();
-
-    const std::vector<std::vector<libMesh::Real> > &dphidx_qp1 = fe_qp1->get_dphidx();
-    const std::vector<std::vector<libMesh::Real> > &dphidy_qp1 = fe_qp1->get_dphidy();
-    const std::vector<std::vector<libMesh::Real> > &dphidz_qp1 = fe_qp1->get_dphidz();
-
-// Define data structures to contain the element matrix
-// and right-hand-side vector contribution.  Following
-// basic finite element terminology we will denote these
-// "Ke" and "Fe".  These datatypes are templated on
-//  Number, which allows the same code to work for real
-// or complex numbers.
-    libMesh::DenseMatrix<libMesh::Number> Ke;
-    libMesh::DenseMatrix<libMesh::Number> Me;
-    libMesh::DenseMatrix<libMesh::Number> Mel;
-    libMesh::DenseVector<libMesh::Number> Fe;
-
-// for interior penalty
-    std::unique_ptr < libMesh::FEBase > fe_elem_face(libMesh::FEBase::build(dim, fe_type_qp1));
-    std::unique_ptr < libMesh::FEBase > fe_neighbor_face(libMesh::FEBase::build(dim, fe_type_qp1));
-// Tell the finite element object to use our quadrature rule.
-    libMesh::QGauss qface(dim - 1, fe_type_qp1.default_quadrature_order());
-
-    fe_elem_face->attach_quadrature_rule(&qface);
-    fe_neighbor_face->attach_quadrature_rule(&qface);
-// Data for surface integrals on the element boundary
-    const std::vector<std::vector<libMesh::Real> > &phi_face = fe_elem_face->get_phi();
-    const std::vector<std::vector<libMesh::RealGradient> > &dphi_face = fe_elem_face->get_dphi();
-    const std::vector<libMesh::Real> &JxW_face = fe_elem_face->get_JxW();
-    const std::vector<libMesh::Point> &qface_normals = fe_elem_face->get_normals();
-    const std::vector<libMesh::Point> &qface_points = fe_elem_face->get_xyz();
-// Data for surface integrals on the neighbor boundary
-    const std::vector<std::vector<libMesh::Real> > &phi_neighbor_face = fe_neighbor_face->get_phi();
-    const std::vector<std::vector<libMesh::RealGradient> > &dphi_neighbor_face = fe_neighbor_face->get_dphi();
-// Data structures to contain the element and neighbor boundary matrix
-// contribution. This matrices will do the coupling beetwen the dofs of
-// the element and those of his neighbors.
-// Ken: matrix coupling elem and neighbor dofs
-    libMesh::DenseMatrix<libMesh::Number> Kne;
-    libMesh::DenseMatrix<libMesh::Number> Ken;
-    libMesh::DenseMatrix<libMesh::Number> Kee;
-    libMesh::DenseMatrix<libMesh::Number> Knn;
-
-    double deltaKn = 0.0;
-    double deltaKn_neighobor = 0.0;
-
-// This vector will hold the degree of freedom indices for
-// the element.  These define where in the global system
-// the element degrees of freedom get mapped.
-    std::vector < libMesh::dof_id_type > dof_indices;
-    std::vector < libMesh::dof_id_type > dof_indices_fibers;
-
-// Now we will loop over all the elements in the mesh.
-// We will compute the element matrix and right-hand-side
-// contribution.
-//
-// Element iterators are a nice way to iterate through all the
-// elements, or all the elements that have some property.  The
-// iterator el will iterate from the first to// the last element on
-// the local processor.  The iterator end_el tells us when to stop.
-// It is smart to make this one const so that we don't accidentally
-// mess it up!  In case users later modify this program to include
-// refinement, we will be safe and will only consider the active
-// elements; hence we use a variant of the active_elem_iterator.
-    libMesh::MeshBase::const_element_iterator el = mesh.active_local_elements_begin();
-    const libMesh::MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
-
-// Loop over the elements.  Note that  ++el is preferred to
-// el++ since the latter requires an unnecessary temporary
-// object.
-    double f0[3];
-    double s0[3];
-    double n0[3];
-    libMesh::RealGradient DgradV;
-    libMesh::TensorValue<double> D0;
-    libMesh::TensorValue<double> D0_neighbor;
-
-    for (; el != end_el; ++el)
-    {
-        const libMesh::Elem *elem = *el;
-        const unsigned int elem_id = elem->id();
-        dof_map_monodomain.dof_indices(elem, dof_indices);
-        dof_map_fibers.dof_indices(elem, dof_indices_fibers);
-
-        // Compute the element-specific data for the current
-        // element.  This involves computing the location of the
-        // quadrature points (q_point) and the shape functions
-        // (phi, dphi) for the current element.
-        fe_qp1->reinit(elem);
-        fe_qp2->reinit(elem);
-
-        // Zero the element matrix and right-hand side before
-        // summing them.  We use the resize member here because
-        // the number of degrees of freedom might have changed from
-        // the last element.  Note that this will be the case if the
-        // element type is different (i.e. the last element was a
-        // triangle, now we are on a quadrilateral).
-
-        // The  DenseMatrix::resize() and the  DenseVector::resize()
-        // members will automatically zero out the matrix  and vector.
-        auto n_dofs = dof_indices.size();
-        Ke.resize(n_dofs, n_dofs);
-        Me.resize(n_dofs, n_dofs);
-        Mel.resize(n_dofs, n_dofs);
-        Fe.resize(n_dofs);
-
-        //        std::cout << "Fibers" << std::endl;
-        // fiber direction
-        f0[0] = (*fiber_system.solution)(dof_indices_fibers[0]);
-        f0[1] = (*fiber_system.solution)(dof_indices_fibers[1]);
-        f0[2] = (*fiber_system.solution)(dof_indices_fibers[2]);
-        // sheet direction
-        s0[0] = (*sheets_system.solution)(dof_indices_fibers[0]);
-        s0[1] = (*sheets_system.solution)(dof_indices_fibers[1]);
-        s0[2] = (*sheets_system.solution)(dof_indices_fibers[2]);
-        // crossfiber direction
-        n0[0] = (*xfiber_system.solution)(dof_indices_fibers[0]);
-        n0[1] = (*xfiber_system.solution)(dof_indices_fibers[1]);
-        n0[2] = (*xfiber_system.solution)(dof_indices_fibers[2]);
-        // Conductivity tensor
-        double Dff = (*conductivity_system.solution)(dof_indices_fibers[0]);
-        double Dss = (*conductivity_system.solution)(dof_indices_fibers[1]);
-        double Dnn = (*conductivity_system.solution)(dof_indices_fibers[2]);
-
-        setup_local_conductivity(D0, Dff, Dss, Dnn, f0, s0, n0);
-        D0 /= Chi;
-
-        // Assemble Mass terms
-        for (unsigned int qp = 0; qp < qrule_mass.n_points(); qp++)
-        {
-            //  Matrix
-            for (unsigned int i = 0; i < phi_qp2.size(); i++)
-            {
-                for (unsigned int j = 0; j < phi_qp2.size(); j++)
-                {
-                    // Mass term
-                    Me(i, j) += JxW_qp2[qp] * (phi_qp2[i][qp] * phi_qp2[j][qp]);
-                    Mel(i, i) += JxW_qp2[qp] * (phi_qp2[i][qp] * phi_qp2[j][qp]);
-                    Fe(i) += JxW_qp2[qp] * (phi_qp2[i][qp] * phi_qp2[j][qp]);
-                }
-            }
-        }
-        monodomain_system.get_matrix("mass").add_matrix(Me, dof_indices);
-        monodomain_system.get_matrix("lumped_mass").add_matrix(Mel, dof_indices);
-        monodomain_system.get_vector("lumped_mass_vector").add_vector(Fe, dof_indices);
-        // Assemble stiffness matrix
-        for (unsigned int qp = 0; qp < qrule_stiffness.n_points(); qp++)
-        {
-            for (unsigned int i = 0; i < dphi_qp1.size(); i++)
-            {
-                DgradV = D0 * dphi_qp1[i][qp];
-
-                for (unsigned int j = 0; j < dphi_qp1.size(); j++)
-                {
-                    // stiffness term
-                    Ke(i, j) += JxW_qp1[qp] * DgradV * dphi_qp1[j][qp];
-                }
-            }
-        }
-        monodomain_system.get_matrix("stiffness").add_matrix(Ke, dof_indices);
-
-        // If the element has no neighbor on a side then that
-        // side MUST live on a boundary of the domain.
-        for (unsigned int side = 0; side < elem->n_sides(); side++)
-        {
-            double gamma = 10.0;
-            if (elem->neighbor_ptr(side))
-            {
-                // Store a pointer to the neighbor we are currently
-                // working on.
-                const libMesh::Elem *neighbor = elem->neighbor_ptr(side);
-                // Get the global id of the element and the neighbor
-                const unsigned int neighbor_id = neighbor->id();
-
-                // WARNING!!!! NOTE!!!!
-                // Here I should use some check for amr:
-                // check libmesh test: miscellaneous_ex5
-                int random = rand() % 100 + 1;
-                if (random >= 10)
-                {
-                    // Pointer to the element side
-                    std::unique_ptr<const libMesh::Elem> elem_side(elem->build_side_ptr(side));
-
-                    // h dimension to compute the interior penalty penalty parameter
-                    const unsigned int elem_b_order = static_cast<unsigned int>(fe_elem_face->get_order());
-                    const unsigned int neighbor_b_order = static_cast<unsigned int>(fe_neighbor_face->get_order());
-                    const double side_order = (elem_b_order + neighbor_b_order) / 2.;
-                    // check against Ern, Stephansen, Zunino
-                    //const double penalty = 0.5 * gamma * elem_side->volume() * elem_side->volume();
-                    //const double h_elem = (elem->volume() / elem_side->volume()) / std::pow(side_order, 2.);
-                    const double h_elem = elem->hmax();
-
-                    // The quadrature point locations on the neighbor side
-                    std::vector < libMesh::Point > qface_neighbor_point;
-
-                    // The quadrature point locations on the element side
-                    std::vector < libMesh::Point > qface_point;
-
-                    // Reinitialize shape functions on the element side
-                    fe_elem_face->reinit(elem, side);
-
-                    // Get the physical locations of the element quadrature points
-                    qface_point = fe_elem_face->get_xyz();
-
-                    // Find their locations on the neighbor
-                    unsigned int side_neighbor = neighbor->which_neighbor_am_i(elem);
-                    libMesh::FEInterface::inverse_map(elem->dim(), fe_qp1->get_fe_type(), neighbor, qface_point, qface_neighbor_point);
-                    // Calculate the neighbor element shape functions at those locations
-                    fe_neighbor_face->reinit(neighbor, &qface_neighbor_point);
-                    // Get the degree of freedom indices for the
-                    // neighbor.  These define where in the global
-                    // matrix this neighbor will contribute to.
-                    std::vector < libMesh::dof_id_type > neighbor_dof_indices;
-                    std::vector < libMesh::dof_id_type > neighbor_fiber_dof_indices;
-                    dof_map_monodomain.dof_indices(neighbor, neighbor_dof_indices);
-                    dof_map_fibers.dof_indices(neighbor, neighbor_fiber_dof_indices);
-
-                    const unsigned int n_neighbor_dofs = neighbor_dof_indices.size();
-                    // Zero the element and neighbor side matrix before
-                    // summing them.  We use the resize member here because
-                    // the number of degrees of freedom might have changed from
-                    // the last element or neighbor.
-                    // Note that Kne and Ken are not square matrices if neighbor
-                    // and element have a different p level
-                    Kne.resize(n_neighbor_dofs, n_dofs);
-                    Ken.resize(n_dofs, n_neighbor_dofs);
-                    Kee.resize(n_dofs, n_dofs);
-                    Knn.resize(n_neighbor_dofs, n_neighbor_dofs);
-
-                    //        std::cout << "Fibers" << std::endl;
-                    // fiber direction
-                    f0[0] = (*fiber_system.solution)(neighbor_fiber_dof_indices[0]);
-                    f0[1] = (*fiber_system.solution)(neighbor_fiber_dof_indices[1]);
-                    f0[2] = (*fiber_system.solution)(neighbor_fiber_dof_indices[2]);
-                    // sheet direction
-                    s0[0] = (*sheets_system.solution)(neighbor_fiber_dof_indices[0]);
-                    s0[1] = (*sheets_system.solution)(neighbor_fiber_dof_indices[1]);
-                    s0[2] = (*sheets_system.solution)(neighbor_fiber_dof_indices[2]);
-                    // crossfiber direction
-                    n0[0] = (*xfiber_system.solution)(neighbor_fiber_dof_indices[0]);
-                    n0[1] = (*xfiber_system.solution)(neighbor_fiber_dof_indices[1]);
-                    n0[2] = (*xfiber_system.solution)(neighbor_fiber_dof_indices[2]);
-                    // Conductivity tensor
-                    double Dff = (*conductivity_system.solution)(neighbor_fiber_dof_indices[0]);
-                    double Dss = (*conductivity_system.solution)(neighbor_fiber_dof_indices[1]);
-                    double Dnn = (*conductivity_system.solution)(neighbor_fiber_dof_indices[2]);                    //
-
-                    setup_local_conductivity(D0_neighbor, Dff, Dss, Dnn, f0, s0, n0);
-                    D0_neighbor /= Chi;
-
-                    for (unsigned int qp = 0; qp < qface.n_points(); qp++)
-                    {
-                        double deltaKn = qface_normals[qp] * (D0 * qface_normals[qp]);
-                        double deltaKn_neighbor = qface_normals[qp] * (D0_neighbor * qface_normals[qp]);
-
-                        // e stands for elem
-                        // n for neighbor
-                        double we = deltaKn_neighbor / (deltaKn_neighbor + deltaKn);
-                        double wn = deltaKn / (deltaKn_neighbor + deltaKn);
-                        double gamma_K = we * deltaKn;
-                        double alpha = 1.0;
-                        double penalty = alpha * gamma_K / h_elem;
-                        // Kee Matrix. Integrate the element test function i
-                        // against the element test function j
-                        for (unsigned int i = 0; i < n_dofs; i++)
-                        {
-                            for (unsigned int j = 0; j < n_dofs; j++)
-                            {
-                                // consistency
-                                Kee(i, j) -= JxW_face[qp] * we * (qface_normals[qp] * (D0 * dphi_face[i][qp])) * phi_face[j][qp];
-                                Kee(i, j) -= JxW_face[qp] * we * (qface_normals[qp] * (D0 * dphi_face[j][qp])) * phi_face[i][qp];
-                                // stability
-                                Kee(i, j) += JxW_face[qp] * penalty * phi_face[j][qp] * phi_face[i][qp];
-                            }
-                        }
-
-                        // Knn Matrix. Integrate the neighbor test function i
-                        // against the neighbor test function j
-                        for (unsigned int i = 0; i < n_neighbor_dofs; i++)
-                        {
-                            for (unsigned int j = 0; j < n_neighbor_dofs; j++)
-                            {
-                                // consistency
-                                //Kee(i, j) += penalty * JxW_face[qp] * (qface_normals[qp] * dphi_neighbor_face[i][qp])
-                                //       * (qface_normals[qp] * dphi_neighbor_face[j][qp]);
-
-//                                Knn(i,j) +=
-//                                        penalty * JxW_face[qp] *
-//                                  (phi_neighbor_face[j][qp]*(qface_normals[qp]*dphi_neighbor_face[i][qp]) +
-//                                   phi_neighbor_face[i][qp]*(qface_normals[qp]*dphi_neighbor_face[j][qp]));
-
-                                Knn(i, j) -= JxW_face[qp] * wn * (qface_normals[qp] * (D0_neighbor * dphi_neighbor_face[i][qp])) * phi_neighbor_face[j][qp];
-                                Knn(i, j) -= JxW_face[qp] * wn * (qface_normals[qp] * (D0_neighbor * dphi_neighbor_face[j][qp])) * phi_neighbor_face[i][qp];
-                                // stability
-                                Knn(i, j) += JxW_face[qp] * penalty * phi_neighbor_face[j][qp] * phi_neighbor_face[i][qp];
-                            }
-                        }
-
-                        // Kne Matrix. Integrate the neighbor test function i
-                        // against the element test function j
-                        for (unsigned int i = 0; i < n_neighbor_dofs; i++)
-                        {
-                            for (unsigned int j = 0; j < n_dofs; j++)
-                            {
-                                // consistency
-                                Kne(i, j) -= JxW_face[qp] * wn * (qface_normals[qp] * (D0 * dphi_neighbor_face[i][qp])) * phi_face[j][qp];
-                                Kne(i, j) -= JxW_face[qp] * we * (qface_normals[qp] * (D0 * dphi_face[j][qp])) * phi_neighbor_face[i][qp];
-                                // consistency
-//                                 Kne(i,j) +=
-//                                         penalty * JxW_face[qp] *
-//                                  (phi_neighbor_face[i][qp]*(qface_normals[qp]*dphi_face[j][qp]) -
-//                                   phi_face[j][qp]*(qface_normals[qp]*dphi_neighbor_face[i][qp]));
-
-                                // stability
-                                Kne(i, j) -= JxW_face[qp] * penalty * phi_face[j][qp] * phi_neighbor_face[i][qp];
-                            }
-                        }
-
-                        // Ken Matrix. Integrate the element test function i
-                        // against the neighbor test function j
-                        for (unsigned int i = 0; i < n_dofs; i++)
-                        {
-                            for (unsigned int j = 0; j < n_neighbor_dofs; j++)
-                            {
-                                // consistency
-                                Ken(i, j) -= JxW_face[qp] * we * (qface_normals[qp] * (D0 * dphi_face[i][qp])) * phi_neighbor_face[j][qp];
-                                Ken(i, j) -= JxW_face[qp] * wn * (qface_normals[qp] * (D0 * dphi_neighbor_face[j][qp])) * phi_face[i][qp];
-//                                Ken(i,j) +=
-//                                        penalty * JxW_face[qp] *
-//                                  (phi_neighbor_face[j][qp]*(qface_normals[qp]*dphi_face[i][qp]) -
-//                                   phi_face[i][qp]*(qface_normals[qp]*dphi_neighbor_face[j][qp]));
-
-                                // stability
-                                Ken(i, j) -= JxW_face[qp] * penalty * phi_face[i][qp] * phi_neighbor_face[j][qp];
-                            }
-                        }
-                    }
-
-                    monodomain_system.get_matrix("stiffness").add_matrix(Kee, dof_indices);
-                    monodomain_system.get_matrix("stiffness").add_matrix(Knn, neighbor_dof_indices);
-                    monodomain_system.get_matrix("stiffness").add_matrix(Kne, neighbor_dof_indices, dof_indices);
-                    monodomain_system.get_matrix("stiffness").add_matrix(Ken, dof_indices, neighbor_dof_indices);
-
-                }
-
-            }
-            else // we are on the boundary
-            {
-                // Pointer to the element side
-                std::unique_ptr<const libMesh::Elem> elem_side(elem->build_side_ptr(side));
-
-                // h dimension to compute the interior penalty penalty parameter
-                const unsigned int elem_b_order = static_cast<unsigned int>(fe_elem_face->get_order());
-                const double side_order = elem_b_order;
-                // check against Ern, Stephansen, Zunino
-                //const double penalty = 0.5 * gamma * elem_side->volume() * elem_side->volume();
-                const double h_elem = elem->hmax();
-                //(elem->volume() / elem_side->volume()) / std::pow(side_order, 2.);
-
-                // The quadrature point locations on the element side
-                std::vector < libMesh::Point > qface_point;
-
-                // Reinitialize shape functions on the element side
-                fe_elem_face->reinit(elem, side);
-
-                // Get the physical locations of the element quadrature points
-                qface_point = fe_elem_face->get_xyz();
-
-                // Zero the element and neighbor side matrix before
-                // summing them.  We use the resize member here because
-                // the number of degrees of freedom might have changed from
-                // the last element or neighbor.
-                // Note that Kne and Ken are not square matrices if neighbor
-                // and element have a different p level
-                Kee.resize(n_dofs, n_dofs);
-
-                for (unsigned int qp = 0; qp < qface.n_points(); qp++)
-                {
-                    double deltaKn = qface_normals[qp] * (D0 * qface_normals[qp]);
-                    double gamma_K = deltaKn;
-                    double we = 1.0;
-                    double alpha = 1.0;
-                    double penalty = alpha * gamma_K / h_elem;
-                    // Kee Matrix. Integrate the element test function i
-                    // against the element test function j
-                    for (unsigned int i = 0; i < n_dofs; i++)
-                    {
-                        for (unsigned int j = 0; j < n_dofs; j++)
-                        {
-                            // consistency
-                            Kee(i, j) -= JxW_face[qp] * we * (qface_normals[qp] * (D0 * dphi_face[i][qp])) * phi_face[j][qp];
-                            Kee(i, j) -= JxW_face[qp] * we * (qface_normals[qp] * (D0 * dphi_face[j][qp])) * phi_face[i][qp];
-                            // stability
-                            //Kee(i, j) += JxW_face[qp] * penalty * phi_face[j][qp] * phi_face[i][qp];
-                        }
-                    }
-                }
-
-                //monodomain_system.get_matrix("stiffness").add_matrix(Kee, dof_indices);
-            }
-        }
-
-    }
-// closing matrices and vectors
-    monodomain_system.get_matrix("mass").close();
-    monodomain_system.get_matrix("lumped_mass").close();
-    monodomain_system.get_matrix("stiffness").close();
-    monodomain_system.get_vector("lumped_mass_vector").close();
-    monodomain_system.get_matrix("high_order_mass").close();
-    monodomain_system.get_matrix("high_order_mass").add(0.5, monodomain_system.get_matrix("mass"));
-    monodomain_system.get_matrix("high_order_mass").add(0.5, monodomain_system.get_matrix("lumped_mass"));
-
-    form_system_matrix(dt, false, "lumped_mass");
-}
 
 void MonodomainExplicit::form_system_matrix(double dt, bool /*useMidpoint */, const std::string &mass)
 {
@@ -1435,30 +853,16 @@ void MonodomainExplicit::form_system_matrix(double dt, bool /*useMidpoint */, co
     monodomain_system.matrix->close();
 
 // Coefficient for matrix
-// SBDF1
+    // SBDF1
     double cdt = dt;
-// SBDF2
-    if (M_timestep_counter > 0 && M_timeIntegrator == TimeIntegrator::SecondOrderIMEX)
-    {
-        cdt = 2.0 / 3.0 * dt;
-    }
-// Matrix part
-//    if(tau>0)
-    {
-        // TEST --------------------------------
-        // S = Cm M
-        monodomain_system.matrix->add(Cm , monodomain_system.get_matrix(mass));
+    // TEST --------------------------------
+    // S = Cm M
+    monodomain_system.matrix->add(Cm , monodomain_system.get_matrix(mass));
 
-        // //---------------------------------------
-        // // S = Cm M Q^n+1 + tau / (c * dt) * Cm * M dQ + c dt K Q^n+1
-        // monodomain_system.matrix->add(Cm * (1.0 + tau / (cdt)), monodomain_system.get_matrix(mass));
-        // monodomain_system.matrix->add(cdt, monodomain_system.get_matrix("stiffness"));
-    }
-//    else
-//    {
-//        monodomain_system.matrix->add(Cm / cdt, monodomain_system.get_matrix(mass));
-//        //monodomain_system.matrix->add(1.0, monodomain_system.get_matrix("stiffness"));
-//    }
+    // //---------------------------------------
+    // // S = Cm M Q^n+1 + tau / (c * dt) * Cm * M dQ + c dt K Q^n+1
+    // monodomain_system.matrix->add(Cm * (1.0 + tau / (cdt)), monodomain_system.get_matrix(mass));
+    // monodomain_system.matrix->add(cdt, monodomain_system.get_matrix("stiffness"));
 }
 
 void MonodomainExplicit::form_system_rhs(double dt, bool useMidpoint, const std::string &mass)
@@ -1490,82 +894,49 @@ void MonodomainExplicit::form_system_rhs(double dt, bool useMidpoint, const std:
 
 // commmon part is: -dt * Chi * M * I^n
 //iion_system.solution->scale(dt*Chi);
-    if (M_timestep_counter > 0 && TimeIntegrator::SecondOrderIMEX == M_timeIntegrator)
-    {
-        // SBDF2
-        double cdt = 2.0 / 3.0 * dt;
-        // RHS WAVE = Cm * tau / cdt * M * ( 4/3 Q^n - 1/3 Q^n-1 )
-        //          - K * Z^n                            // Z^n = 4/3 V^n - 1/3V^n-1
-        //          - M * ( 2*I^n-I^n-1) - tau * M * ( 2*dI^n-dI^n-1) - M * Istim
 
-        // First compute -( 2*I^n - I^n-1+ 2*tau * dI^n - tau * dI^n-1 + Istim )
-        // 2 * I^n
-        total_current.add(-2.0, *iion_system.solution);
-        // - I^n-1
-        total_current.add(1.0, *iion_system.old_local_solution);
-        // 2 * tau * dI^n
-        total_current.add(-2.0 * tau, iion_system.get_vector("diion"));
-        // - tau * dI^n-1
-        total_current.add(tau, iion_system.get_vector("diion_old"));
-        // Istim
-        total_current.add(-1.0, *istim_system.solution);
+    // Forward Euler
+    double cdt = dt;
+    // RHS = - K*V^n+M*I^n+1
+    aux1.add(1.0, *wave_system.old_local_solution);
+  
 
-        // Then compute M * ( I^n + tau * dI^n + Istim ) = M * total_current
-        // adding it to the system RHS
-        monodomain_system.get_matrix(mass).vector_mult_add(*monodomain_system.rhs, total_current);
+//    // SBDF1
+//         double cdt = dt;
+//         // RHS WAVE = Cm * tau / cdt * M * Q^n
+//         //          - K * Z^n                            // Z^n = V^n
+//         //          - M * I^n - tau * M * dI^n - M * Istim
 
-        {
-            // Second we compute the time derivative term
-            // Cm * tau / cdt * M * ( 4/3 Q^n - 1/3 Q^n-1 )
-            //
-            // We store Cm * tau / cdt * M * ( 4/3 Q^n - 1/3 Q^n-1 ) in aux1
-            aux1.add(4.0 / 3.0, *monodomain_system.old_local_solution);
-            aux1.add(-1.0 / 3.0, *monodomain_system.older_local_solution);
-            aux1.scale(Cm * tau / cdt);
-            // Then we added to the RHS
-            // M * aux1
-            monodomain_system.get_matrix(M_systemMass).vector_mult_add(*monodomain_system.rhs, aux1);
+//         // First compute -(I^n + tau * dI^n + Istim)
+//         // I^n
+//         total_current.add(-1.0, *iion_system.solution);
+//         // tau * dI^n
+//         total_current.add(-tau, iion_system.get_vector("diion"));
+//         // Istim
+//         total_current.add(-1.0, *istim_system.solution);
 
-            // Third compute - K * Z^n
-            // We store -Z^n in aux2,  -Z^n = -4/3 V^n + 1/3V^n-1
-            aux2.add(-4.0 / 3.0, *wave_system.old_local_solution);
-            aux2.add(1.0 / 3.0, *wave_system.older_local_solution);
-            // Then we added to the RHS
-            // K * aux2
-            monodomain_system.get_matrix("stiffness").vector_mult_add(*monodomain_system.rhs, aux2);
-//            }
-//            else
-//            {
-//                // We store Cm * tau / cdt * M * ( 4/3 Q^n - 1/3 Q^n-1 ) in aux1
-//                aux1.add( 4.0/3.0, *monodomain_system.old_local_solution);
-//                aux1.add(-1.0/3.0, *monodomain_system.older_local_solution);
-//                aux1.scale(Cm/cdt);
-//                // Then we added to the RHS
-//                // M * aux1
-//                monodomain_system.get_matrix(M_systemMass).vector_mult_add(*monodomain_system.rhs, aux1);
-        }
+//         // Then compute M * ( I^n + tau * dI^n + Istim ) = M * total_current
+//         // adding it to the system RHS
+//         monodomain_system.get_matrix(mass).vector_mult_add(*monodomain_system.rhs, total_current);
 
-    }
-    else
-    {
-        // TEST----------------------------------------------
-        // RHS = (1+dt*K)*V^n - dt*M*I^n - M*Istim
-        double cdt = dt;
-        // -I^n
-        total_current.add(-1.0, *iion_system.solution);
-        // -Istim
-        total_current.add(-1.0, *istim_system.solution);
-        // Then compute M * ( - I^n  + Istim ) = M * total_current
-        monodomain_system.get_matrix(mass).vector_mult_add(*monodomain_system.rhs, total_current);
-        //dt * V^n
-        aux1.add(cdt,*monodomain_system.old_local_solution);
-        // K * dt * V^n
-        monodomain_system.get_matrix("stiffness").vector_mult_add(*monodomain_system.rhs, aux1);
-        //+ V^n
-        aux1.add(1.0,*monodomain_system.old_local_solution);
-        //Sum it all to RHS
-        *monodomain_system.rhs+= aux1;
-    }
+//         //if(tau>0)
+//         {
+//             // Second we compute the time derivative term
+//             // Cm * tau / cdt * M * Q^n
+//             //
+//             // We store Cm * tau / cdt * Q^n in aux1
+//             aux1.add(Cm * tau / cdt, *monodomain_system.old_local_solution);
+//             // Then we added to the RHS
+//             // M * aux1
+//             monodomain_system.get_matrix(M_systemMass).vector_mult_add(*monodomain_system.rhs, aux1);
+
+//             // Third compute - K * Z^n
+//             // We store -Z^n in aux2, but
+//             aux2.add(-1.0, *wave_system.old_local_solution);
+//             // Then we added to the RHS
+//             // K * aux2
+//             monodomain_system.get_matrix("stiffness").vector_mult_add(*monodomain_system.rhs, aux2);
+//         }
 }
 
 void MonodomainExplicit::solve_diffusion_step(double dt, double time, bool useMidpoint, const std::string &mass, bool reassemble)
@@ -1576,30 +947,15 @@ void MonodomainExplicit::solve_diffusion_step(double dt, double time, bool useMi
     form_system_rhs(dt, useMidpoint, mass);
 //std::cout << "form_system_rhs done" << std::endl;
     const libMesh::Real tau = M_equationSystems.parameters.get < libMesh::Real > ("tau"); // time constant
-
-// If we are using SBDF2, we need to compute the system matrix again
-// In fact we do a first step with Forward-Backward Euler
-// and then we proceed with SBDF2
-// std::cout << "call from system matrix? " << M_timestep_counter << std::endl;
-    if (M_timestep_counter == 1 && TimeIntegrator::SecondOrderIMEX == M_timeIntegrator)
-    {
-        std::cout << "Yes! call from system matrix: " << M_timestep_counter << std::endl;
-        form_system_matrix(dt, false, M_systemMass);
-    }
-//++M_timestep_counter;
-
     double tol = 1e-12;
     double max_iter = 2000;
 
     std::pair<unsigned int, double> rval = std::make_pair(0, 0.0);
 
-//std::cout << "Solving" << std::endl;
-//
-//monodomain_system.matrix->print();
-//monodomain_system.rhs->print();
+    // Solving for Q^(n+1) 
     rval = M_linearSolver->solve(*monodomain_system.matrix, *monodomain_system.solution, *monodomain_system.rhs, tol, max_iter);
+    // std::cout << "solve done" << std::endl;
 
-// std::cout << "solve done" << std::endl;
 // WAVE
     ElectroSystem &wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
     {
@@ -1612,13 +968,10 @@ void MonodomainExplicit::solve_diffusion_step(double dt, double time, bool useMi
             wave_system.solution->add(4.0 / 3.0, *wave_system.old_local_solution);
             wave_system.solution->add(-1.0 / 3.0, *wave_system.older_local_solution);
         }
-
         else
         {
-            // *wave_system.solution = *monodomain_system.solution;
-            // wave_system.solution->scale(dt);
-            // *wave_system.solution += *wave_system.old_local_solution;
-            
+            // Use BDF1
+            // V^n+1 = dt * Q^n+1 + V^n
             *wave_system.solution = *monodomain_system.solution;
             wave_system.solution->scale(dt);
             *wave_system.solution += *wave_system.old_local_solution;

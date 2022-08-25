@@ -115,6 +115,7 @@ typedef libMesh::TransientLinearImplicitSystem MonodomainSystem;
 typedef libMesh::TransientLinearImplicitSystem ElectroSystem;
 typedef libMesh::TransientExplicitSystem IonicModelSystem;
 typedef libMesh::ExplicitSystem ParameterSystem;
+typedef libMesh::TransientExplicitSystem MonoExplicitSystem;
 
 ElectroSolverExplicit* createMonodomainExplicit(libMesh::EquationSystems &es)
 {
@@ -157,7 +158,7 @@ void MonodomainExplicit::setup_systems(GetPot &data, std::string section)
     monodomain_system.init();
 
     // WAVE
-    ElectroSystem &wave_system = M_equationSystems.add_system < ElectroSystem > ("wave");
+    MonoExplicitSystem &wave_system = M_equationSystems.add_system < MonoExplicitSystem > ("wave");
     wave_system.add_variable("V", M_order, M_FEFamily);
     M_exporterNames.insert("wave");
     wave_system.init();
@@ -245,7 +246,7 @@ void MonodomainExplicit::cut(double time, std::string f)
 //    cut_system.update();
     IonicModelSystem &ionic_model_system = M_equationSystems.get_system < IonicModelSystem > ("ionic_model");
     // WAVE
-    ElectroSystem &wave_system = M_equationSystems.add_system < ElectroSystem > ("wave");
+    MonoExplicitSystem &wave_system = M_equationSystems.add_system < MonoExplicitSystem > ("wave");
     ElectroSystem &monodomain_system = M_equationSystems.get_system < ElectroSystem > (M_model);
 
     auto first = cut_system.solution->first_local_index();
@@ -508,7 +509,7 @@ void MonodomainExplicit::amr(libMesh::MeshRefinement &mesh_refinement, const std
         p_error_estimator = new libMesh::LaplacianErrorEstimator;
     ElectroSystem &monodomain_system = M_equationSystems.get_system < ElectroSystem > (M_model);
     // WAVE
-    ElectroSystem &wave_system = M_equationSystems.add_system < ElectroSystem > ("wave");
+    MonoExplicitSystem &wave_system = M_equationSystems.add_system < MonoExplicitSystem > ("wave");
 
     p_error_estimator->estimate_error(wave_system, error);
     mesh_refinement.flag_elements_by_error_fraction(error);
@@ -869,7 +870,7 @@ void MonodomainExplicit::form_system_rhs(double dt, bool useMidpoint, const std:
 {
     MonodomainSystem &monodomain_system = M_equationSystems.get_system < MonodomainSystem > (M_model);
 // WAVE
-    ElectroSystem &wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
+    MonoExplicitSystem &wave_system = M_equationSystems.get_system < MonoExplicitSystem > ("wave");
     IonicModelSystem &iion_system = M_equationSystems.get_system < IonicModelSystem > ("iion");
     IonicModelSystem &istim_system = M_equationSystems.get_system < IonicModelSystem > ("istim");
 
@@ -957,26 +958,13 @@ void MonodomainExplicit::solve_diffusion_step(double dt, double time, bool useMi
     // std::cout << "solve done" << std::endl;
 
 // WAVE
-    ElectroSystem &wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
+    MonoExplicitSystem &wave_system = M_equationSystems.get_system < MonoExplicitSystem > ("wave");
     {
-        if (0 < M_timestep_counter && TimeIntegratorExplicit::SecondOrderIMEX == M_timeIntegrator)
-        {
-            // Use BDF2
-            // V^n+1 = 4/3 V^n - 1/3 V^n + 2/3 dt * Q^n+1
-            *wave_system.solution = *monodomain_system.solution;
-            wave_system.solution->scale(2.0 / 3.0 * dt);
-            wave_system.solution->add(4.0 / 3.0, *wave_system.old_local_solution);
-            wave_system.solution->add(-1.0 / 3.0, *wave_system.older_local_solution);
-        }
-        else
-        {
-            // Use BDF1
-            // V^n+1 = dt * Q^n+1 + V^n
-            *wave_system.solution = *monodomain_system.solution;
-            wave_system.solution->scale(dt);
-            *wave_system.solution += *wave_system.old_local_solution;
-
-        }
+        // Use BDF1
+        // V^n+1 = dt * Q^n+1 + V^n
+        *wave_system.solution = *monodomain_system.solution;
+        wave_system.solution->scale(dt);
+        *wave_system.solution += *wave_system.old_local_solution;
     }
 
     M_timestep_counter++;

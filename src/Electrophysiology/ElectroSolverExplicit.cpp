@@ -68,12 +68,13 @@ namespace BeatIt
     typedef libMesh::TransientLinearImplicitSystem ElectroSystem;
     typedef libMesh::TransientExplicitSystem IonicModelSystem;
     typedef libMesh::ExplicitSystem ParameterSystem;
+    typedef libMesh::TransientExplicitSystem MonoExplicitSystem;
 
     ElectroSolverExplicit::ElectroSolverExplicit(libMesh::EquationSystems& es, std::string model)
             : M_equationSystems(es), M_exporter(), M_exporterNames(), M_ionicModelExporter(), M_ionicModelExporterNames(), M_parametersExporter(), M_parametersExporterNames(), M_outputFolder(), M_datafile(), M_pacing_i(), M_pacing_e(), M_linearSolver(), M_anisotropy(
                     AnisotropyExplicit::Orthotropic), M_equationType(EquationTypeExplicit::ParabolicEllipticBidomain), M_timeIntegratorType(DynamicTimeIntegratorType::Implicit), M_useAMR(false), M_assembleMatrix(
                     true), M_systemMass("lumped"), M_intraConductivity(), M_extraConductivity(), M_conductivity(), M_meshSize(1.0), M_model(model), M_ground_ve(GroundExplicit::Nullspace), M_timeIntegrator(
-                    TimeIntegratorExplicit::FirstOrderIMEX), M_timestep_counter(0), M_symmetricOperator(false), M_elapsed_time(), M_num_linear_iters(0), M_order(libMesh::FIRST), M_FEFamily(libMesh::LAGRANGE)
+                    TimeIntegratorExplicit::FirstOrderSSPRK2), M_timestep_counter(0), M_symmetricOperator(false), M_elapsed_time(), M_num_linear_iters(0), M_order(libMesh::FIRST), M_FEFamily(libMesh::LAGRANGE)
     {
         // TODO Auto-generated constructor stub
 
@@ -84,7 +85,7 @@ namespace BeatIt
     }
 
     void ElectroSolverExplicit::setup(GetPot& data, std::string section)
-    {
+    {       
         // ///////////////////////////////////////////////////////////////////////
         // ///////////////////////////////////////////////////////////////////////
         // Read Input File
@@ -263,12 +264,12 @@ namespace BeatIt
         if (2 == time_integrator_order && isSecondORderImplemented)
         {
             std::cout << "ELECTROSOLVEREXPLICIT: using SBDF order 2 " << std::endl;
-            M_timeIntegrator = TimeIntegratorExplicit::SecondOrderIMEX;                     // THROW ERROR HERE
+            throw std::runtime_error("second order time-stepping not implemented yet");
         }
         else
         {
             std::cout << "ELECTROSOLVEREXPLICIT: using SBDF order 1 " << std::endl;
-            M_timeIntegrator = TimeIntegratorExplicit::FirstOrderIMEX;
+            M_timeIntegrator = TimeIntegratorExplicit::FirstOrderSSPRK2;
         }
 
         // ///////////////////////////////////////////////////////////////////////
@@ -360,7 +361,7 @@ namespace BeatIt
         std::cout << "* ElectroSolverExplicit: Setup ionic model vector: " << std::endl;
 
         // WAVE
-        ElectroSystem& wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
+        MonoExplicitSystem& wave_system = M_equationSystems.get_system < MonoExplicitSystem > ("wave");
         // Setting initial conditions
         ElectroSystem& system = M_equationSystems.get_system < ElectroSystem > (M_model);
 
@@ -482,7 +483,7 @@ namespace BeatIt
     {
         // WAVE
         std::cout << "* ElectroSolverExplicit: Init Systems: " << std::endl;
-        ElectroSystem& wave_system = M_equationSystems.get_system<ElectroSystem>("wave");
+        MonoExplicitSystem& wave_system = M_equationSystems.get_system<MonoExplicitSystem>("wave");
 
         std::string v_ic = M_datafile(M_section + "/ic", "");
         if (v_ic != "")
@@ -743,7 +744,7 @@ namespace BeatIt
     void ElectroSolverExplicit::setup_ic(libMesh::FunctionBase<libMesh::Number>& ic, double time) // setup initial conditions
     {
         // WAVE
-        ElectroSystem& wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
+        MonoExplicitSystem& wave_system = M_equationSystems.get_system < MonoExplicitSystem > ("wave");
         M_equationSystems.parameters.set < libMesh::Real > ("time") = time;
         wave_system.time = time;
         std::cout << "* BIDOMAIN+BATH: Projecting initial condition to bidomain system ... " << std::flush;
@@ -1080,7 +1081,7 @@ namespace BeatIt
     {
         ParameterSystem& activation_times_system = M_equationSystems.get_system < ParameterSystem > ("activation_times");
         // WAVE
-        ElectroSystem& wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
+        MonoExplicitSystem& wave_system = M_equationSystems.get_system < MonoExplicitSystem > ("wave");
         // Setting initial conditions
         ElectroSystem& system = M_equationSystems.get_system < ElectroSystem > (M_model);
 
@@ -1161,7 +1162,7 @@ namespace BeatIt
         // V^(n-1) = wave_system.older_local_solution
         //     V^n = wave_system.old_local_solution
         // V^(n+1) = wave_system.solution
-        ElectroSystem& wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
+        MonoExplicitSystem& wave_system = M_equationSystems.get_system < MonoExplicitSystem > ("wave");
         wave_system.solution->close();
         wave_system.old_local_solution->close();
         wave_system.older_local_solution->close();
@@ -1208,7 +1209,7 @@ namespace BeatIt
         libMesh::MeshBase & mesh = M_equationSystems.get_mesh();
         const unsigned int dim = mesh.mesh_dimension();
 
-        ElectroSystem& wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
+        MonoExplicitSystem& wave_system = M_equationSystems.get_system < MonoExplicitSystem > ("wave");
 
         const libMesh::DofMap & dof_map = wave_system.get_dof_map();
         std::vector < libMesh::dof_id_type > dof_indices;
@@ -1273,7 +1274,7 @@ namespace BeatIt
     {
         if (M_FEFamily == libMesh::MONOMIAL || M_FEFamily == libMesh::L2_LAGRANGE)
         {
-            solve_reaction_step_dg(dt, time, step, useMidpoint, mass, I4f_ptr);
+            throw std::runtime_error("DG not implemented!!!");
         }
         else solve_reaction_step_cg(dt, time, step, useMidpoint, mass, I4f_ptr);
 
@@ -1287,7 +1288,7 @@ namespace BeatIt
         ElectroSystem& system = M_equationSystems.get_system < ElectroSystem > (M_model);
         IonicModelSystem& istim_system = M_equationSystems.get_system < IonicModelSystem > ("istim");
         // WAVE
-        ElectroSystem& wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
+        MonoExplicitSystem& wave_system = M_equationSystems.get_system < MonoExplicitSystem > ("wave");
         IonicModelSystem& iion_system = M_equationSystems.get_system < IonicModelSystem > ("iion");
 
         system.rhs->zero();
@@ -1398,7 +1399,7 @@ namespace BeatIt
 
                     }
 
-                    if (TimeIntegratorExplicit::FirstOrderIMEX == M_timeIntegrator) 
+                    if (TimeIntegratorExplicit::FirstOrderSSPRK2 == M_timeIntegrator) 
                     {
                         // Updating variables from ionic ODE system
                         ionicModelPtr->updateVariables(values, istim, dt); 
@@ -1494,11 +1495,6 @@ namespace BeatIt
 
         iion_system.update();
         istim_system.update();
-    }
-
-    void ElectroSolverExplicit::solve_reaction_step_dg(double dt, double time, int step, bool useMidpoint, const std::string& mass, libMesh::NumericVector<libMesh::Number>* I4f_ptr)
-    {
-        throw std::runtime_error("DG NOT CODED!");
     }
 
     void ElectroSolverExplicit::setup_ODE_systems(GetPot& data, std::string section)

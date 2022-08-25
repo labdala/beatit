@@ -62,8 +62,7 @@ enum class EquationTypeExplicit { ReactionDiffusion,
                           ParabolicEllipticHyperbolic,
                           ParabolicParabolicHyperbolic   };
 enum class ModelTypeExplicit { Monodomain, Bidomain, BidomainWithBath };
-enum class TimeIntegratorExplicit { FirstOrderIMEX,     // FORWARD-BACKWARD EULER
-                                    SecondOrderIMEX  }; // SBDF2
+enum class TimeIntegratorExplicit { FirstOrderSSPRK2}; // SBDF2
 
 enum class GroundExplicit { Nullspace,
                     GroundNode,
@@ -130,12 +129,6 @@ public:
                               const std::string& mass = "mass",
                               libMesh::NumericVector<libMesh::Number>* I4f_ptr = nullptr);
 
-    virtual void solve_reaction_step_dg( double dt,
-                              double time,
-                              int step = 0,
-                              bool useMidpoint = true,
-                              const std::string& mass = "mass",
-                              libMesh::NumericVector<libMesh::Number>* I4f_ptr = nullptr);
 
     virtual void solve_diffusion_step(double dt, double time,  bool useMidpoint = true, const std::string& mass = "lumped_mass", bool reassemble = true) = 0;
     virtual void generate_fibers(   const GetPot& data,

@@ -78,7 +78,7 @@ public:
     // Another alternative when not using AMR
     typedef libMesh::ExodusII_IO EXOExporter;
 
-    ElectroSolverExplicit( libMesh::EquationSystems& es, std::string model = "bidomain" );
+    ElectroSolverExplicit( libMesh::EquationSystems& es, std::string model = "monodomain_explicit" );
     virtual ~ElectroSolverExplicit();
 
 
@@ -112,7 +112,6 @@ public:
 
     //void cut(double time, std::string f);
     virtual void assemble_matrices(double dt = 1.0)  = 0;
-    virtual void form_system_matrix(double dt, bool useMidpoint = true, const std::string& mass = "lumped_mass") = 0;
     virtual void form_system_rhs(double dt, bool useMidpoint = true, const std::string& mass = "lumped_mass") = 0;
     void advance();
     virtual void solve_reaction_step( double dt,

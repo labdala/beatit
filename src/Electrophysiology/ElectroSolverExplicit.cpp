@@ -68,7 +68,6 @@ namespace BeatIt
     typedef libMesh::TransientLinearImplicitSystem ElectroSystem;
     typedef libMesh::TransientExplicitSystem IonicModelSystem;
     typedef libMesh::ExplicitSystem ParameterSystem;
-    typedef libMesh::TransientExplicitSystem MonoExplicitSystem;
 
     ElectroSolverExplicit::ElectroSolverExplicit(libMesh::EquationSystems& es, std::string model)
             : M_equationSystems(es), M_exporter(), M_exporterNames(), M_ionicModelExporter(), M_ionicModelExporterNames(), M_parametersExporter(), M_parametersExporterNames(), M_outputFolder(), M_datafile(), M_pacing_i(), M_pacing_e(), M_linearSolver(), M_anisotropy(
@@ -361,13 +360,13 @@ namespace BeatIt
         std::cout << "* ElectroSolverExplicit: Setup ionic model vector: " << std::endl;
 
         // WAVE
-        MonoExplicitSystem& wave_system = M_equationSystems.get_system < MonoExplicitSystem > ("wave");
+        ElectroSystem& wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
         // Setting initial conditions
-        ElectroSystem& system = M_equationSystems.get_system < ElectroSystem > (M_model);
+        // ElectroSystem& system = M_equationSystems.get_system < ElectroSystem > (M_model);
 
         libMesh::MeshBase::const_node_iterator node = mesh.local_nodes_begin();
         const libMesh::MeshBase::const_node_iterator end_node = mesh.local_nodes_end();
-        const libMesh::DofMap & dof_map = system.get_dof_map();
+        // const libMesh::DofMap & dof_map = system.get_dof_map();
         const libMesh::DofMap & dof_map_V = wave_system.get_dof_map();
 
         std::vector < libMesh::dof_id_type > dof_indices_V;
@@ -379,13 +378,13 @@ namespace BeatIt
 
         for (auto & nn : mesh.local_node_ptr_range() )
         {
-            //const libMesh::Node * nn = *node;
-            // Are we in the bath?
-            auto n_var = nn->n_vars(system.number());
-            auto n_dofs = nn->n_dofs(system.number());
-            if (n_var == n_dofs)
-            {
-                dof_map.dof_indices(nn, dof_indices_Q, 0);
+            // //const libMesh::Node * nn = *node;
+            // // Are we in the bath?
+            // auto n_var = nn->n_vars(system.number());
+            // auto n_dofs = nn->n_dofs(system.number());
+            // if (n_var == n_dofs)
+            // {
+                // dof_map.dof_indices(nn, dof_indices_Q, 0);
                 dof_map_V.dof_indices(nn, dof_indices_V);
                 iion_system.get_dof_map().dof_indices(nn, dof_indices_iion);
                 int key_iion = iion_system.get_vector("ionic_model_map")(dof_indices_iion[0]);
@@ -425,7 +424,7 @@ namespace BeatIt
                 	throw std::runtime_error("No ionic Model Ptr");
                 }
             }
-        }
+//        }
         wave_system.solution->close();
 
         for (auto && name : M_ionic_models_systems_name_vec)
@@ -434,9 +433,9 @@ namespace BeatIt
             ionic_model_system.solution->close();
         }
 
-        system.solution->close();
-        system.old_local_solution->close();
-        system.older_local_solution->close();
+        // system.solution->close();
+        wave_system.old_local_solution->close();
+        wave_system.older_local_solution->close();
 
         std::map < std::string, libMesh::SolverType > solver_map;
         solver_map["cg"] = libMesh::CG;
@@ -483,7 +482,7 @@ namespace BeatIt
     {
         // WAVE
         std::cout << "* ElectroSolverExplicit: Init Systems: " << std::endl;
-        MonoExplicitSystem& wave_system = M_equationSystems.get_system<MonoExplicitSystem>("wave");
+        ElectroSystem& wave_system = M_equationSystems.get_system<ElectroSystem>("wave");
 
         std::string v_ic = M_datafile(M_section + "/ic", "");
         if (v_ic != "")
@@ -744,7 +743,7 @@ namespace BeatIt
     void ElectroSolverExplicit::setup_ic(libMesh::FunctionBase<libMesh::Number>& ic, double time) // setup initial conditions
     {
         // WAVE
-        MonoExplicitSystem& wave_system = M_equationSystems.get_system < MonoExplicitSystem > ("wave");
+        ElectroSystem& wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
         M_equationSystems.parameters.set < libMesh::Real > ("time") = time;
         wave_system.time = time;
         std::cout << "* BIDOMAIN+BATH: Projecting initial condition to bidomain system ... " << std::flush;
@@ -852,9 +851,9 @@ namespace BeatIt
         std::vector < libMesh::dof_id_type > dof_indices;
         std::vector < libMesh::dof_id_type > dof_indices_endo;
 
-        ElectroSystem& system = M_equationSystems.get_system < ElectroSystem > (M_model);
+        ElectroSystem& wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
         auto& boundary_sys = M_boundary_ve.M_boundary_es->get_system < libMesh::ExplicitSystem > ("ve");
-        const libMesh::DofMap & dof_map = system.get_dof_map();
+        const libMesh::DofMap & dof_map = wave_system.get_dof_map();
         const libMesh::DofMap & dof_map_endo = boundary_sys.get_dof_map();
 
 
@@ -873,7 +872,7 @@ namespace BeatIt
                 dof_map_endo.dof_indices(endo_nn, dof_indices_endo, 0);
 
                 //std::cout << "get_ve: " << dof_indices.size() << std::endl;
-                double ve = (*system.solution)(dof_indices[0]);
+                double ve = (*wave_system.solution)(dof_indices[0]);
                 //std::cout << "set_ve" << std::endl;
                 boundary_sys.solution->set(dof_indices_endo[0], ve);
             }
@@ -1081,9 +1080,9 @@ namespace BeatIt
     {
         ParameterSystem& activation_times_system = M_equationSystems.get_system < ParameterSystem > ("activation_times");
         // WAVE
-        MonoExplicitSystem& wave_system = M_equationSystems.get_system < MonoExplicitSystem > ("wave");
+        ElectroSystem& wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
         // Setting initial conditions
-        ElectroSystem& system = M_equationSystems.get_system < ElectroSystem > (M_model);
+        // ElectroSystem& system = M_equationSystems.get_system < ElectroSystem > (M_model);
 
         const libMesh::MeshBase & mesh = M_equationSystems.get_mesh();
 
@@ -1091,7 +1090,7 @@ namespace BeatIt
         const libMesh::MeshBase::const_node_iterator end_node = mesh.local_nodes_end();
 
         const libMesh::DofMap & dof_map = wave_system.get_dof_map();
-        const libMesh::DofMap & dof_map_q = system.get_dof_map();
+        // const libMesh::DofMap & dof_map_q = system.get_dof_map();
         const libMesh::DofMap & dof_map_at = activation_times_system.get_dof_map();
 
         std::vector < libMesh::dof_id_type > dof_indices_Q;
@@ -1109,13 +1108,13 @@ namespace BeatIt
 
             dof_map.dof_indices(nn, dof_indices_V, 0);
             dof_map_at.dof_indices(nn, dof_indices_at, 0);
-            dof_map_q.dof_indices(nn, dof_indices_Q, 0);
+            // dof_map_q.dof_indices(nn, dof_indices_Q, 0);
 
             if (dof_indices_V.size() > 0)
             {
                 v = (*wave_system.solution)(dof_indices_V[0]);
                 at = (*activation_times_system.solution)(dof_indices_at[0]);
-                q = (*system.solution)(dof_indices_Q[0]);
+                // q = (*system.solution)(dof_indices_Q[0]);
                 if (v > threshold && at < 0.0)
                 {
                     activation_times_system.solution->set(dof_indices_at[0], time);
@@ -1134,14 +1133,14 @@ namespace BeatIt
     // Advance in time
     void ElectroSolverExplicit::advance()
     {
-        ElectroSystem& system = M_equationSystems.get_system < ElectroSystem > (M_model);
+        ElectroSystem& wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
 
-        system.solution->close();
-        system.old_local_solution->close();
-        system.older_local_solution->close();
-        *system.older_local_solution = *system.old_local_solution;
-        *system.old_local_solution = *system.solution;
-        system.update();
+        wave_system.solution->close();
+        wave_system.old_local_solution->close();
+        wave_system.older_local_solution->close();
+        // *wave_system.older_local_solution = *system.old_local_solution;
+        // *wave_system.old_local_solution = *system.solution;
+        wave_system.update();
 
         // Update ionic model
         // I^(n-1) = ionic_model_system.older_local_solution
@@ -1162,7 +1161,7 @@ namespace BeatIt
         // V^(n-1) = wave_system.older_local_solution
         //     V^n = wave_system.old_local_solution
         // V^(n+1) = wave_system.solution
-        MonoExplicitSystem& wave_system = M_equationSystems.get_system < MonoExplicitSystem > ("wave");
+        // ElectroSystem& wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
         wave_system.solution->close();
         wave_system.old_local_solution->close();
         wave_system.older_local_solution->close();
@@ -1199,8 +1198,8 @@ namespace BeatIt
 
     double ElectroSolverExplicit::potential_norm()
     {
-        ElectroSystem& system = M_equationSystems.get_system < ElectroSystem > (M_model);
-        return system.solution->l1_norm();
+        ElectroSystem& wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
+        return wave_system.solution->l1_norm();
     }
 
     void ElectroSolverExplicit::set_potential_on_boundary(unsigned int boundID, double value, int subdomain)
@@ -1209,7 +1208,7 @@ namespace BeatIt
         libMesh::MeshBase & mesh = M_equationSystems.get_mesh();
         const unsigned int dim = mesh.mesh_dimension();
 
-        MonoExplicitSystem& wave_system = M_equationSystems.get_system < MonoExplicitSystem > ("wave");
+        ElectroSystem& wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
 
         const libMesh::DofMap & dof_map = wave_system.get_dof_map();
         std::vector < libMesh::dof_id_type > dof_indices;
@@ -1285,13 +1284,13 @@ namespace BeatIt
         const libMesh::MeshBase & mesh = M_equationSystems.get_mesh();
 //    BidomainSystem& bidomain_system = M_equationSystems.get_system
 //            < BidomainSystem > ("bidomain"); //Q
-        ElectroSystem& system = M_equationSystems.get_system < ElectroSystem > (M_model);
+        // ElectroSystem& system = M_equationSystems.get_system < ElectroSystem > (M_model);
         IonicModelSystem& istim_system = M_equationSystems.get_system < IonicModelSystem > ("istim");
         // WAVE
-        MonoExplicitSystem& wave_system = M_equationSystems.get_system < MonoExplicitSystem > ("wave");
+        ElectroSystem& wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
         IonicModelSystem& iion_system = M_equationSystems.get_system < IonicModelSystem > ("iion");
 
-        system.rhs->zero();
+        wave_system.rhs->zero();
         istim_system.solution->zero();
         istim_system.get_vector("stim_i").zero();
         istim_system.get_vector("stim_e").zero();
@@ -1309,7 +1308,7 @@ namespace BeatIt
         libMesh::MeshBase::const_node_iterator node = mesh.local_nodes_begin();
         const libMesh::MeshBase::const_node_iterator end_node = mesh.local_nodes_end();
 
-        const libMesh::DofMap & dof_map = system.get_dof_map();
+        // const libMesh::DofMap & dof_map = system.get_dof_map();
         const libMesh::DofMap & dof_map_V = wave_system.get_dof_map();
         const libMesh::DofMap & dof_map_istim = istim_system.get_dof_map();
 
@@ -1339,13 +1338,13 @@ namespace BeatIt
 
             const libMesh::Node * nn = *node;
             // Are we in the bath?
-            auto n_var = nn->n_vars(system.number());
-            auto n_dofs = nn->n_dofs(system.number());
+            // auto n_var = nn->n_vars(system.number());
+            // auto n_dofs = nn->n_dofs(system.number());
             // std::cout << "n_dofs per node: " << n_dofs << ", n_var: " << n_var << std::endl;
             libMesh::Point p((*nn)(0), (*nn)(1), (*nn)(2));
-            if (n_var == n_dofs)
-            {
-                dof_map.dof_indices(nn, dof_indices_Q, 0);
+            // if (n_var == n_dofs)
+            // {
+                // dof_map.dof_indices(nn, dof_indices_Q, 0);
                 dof_map_V.dof_indices(nn, dof_indices_V, 0);
                 dof_map_istim.dof_indices(nn, dof_indices_istim, 0);
 
@@ -1357,7 +1356,7 @@ namespace BeatIt
 
                 double Iion_old = 0.0;
                 double v = (*wave_system.old_local_solution)(dof_indices_V[0]); //V^n
-                double gating_rhs_ = (*system.old_local_solution)(dof_indices_Q[0]); //Q^n
+                double gating_rhs_ = (*wave_system.old_local_solution)(dof_indices_V[0]); //Q^n
                 Iion_old = (*iion_system.old_local_solution)(dof_indices_istim[0]); // gating
                 int key = iion_system.get_vector("ionic_model_map")(dof_indices_istim[0]);
                 auto it_ionic_model = M_ionicModelPtrMap.find(key);
@@ -1465,7 +1464,7 @@ namespace BeatIt
                         ionic_model_system.solution->set(var_index, values[nv + 1]);
                     }
                 }
-            }
+            // }
             c++;
 
         }

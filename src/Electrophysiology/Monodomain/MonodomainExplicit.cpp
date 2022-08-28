@@ -111,11 +111,9 @@ namespace BeatIt
 
 // ///////////////////////////////////////////////////////////////////////
 // ///////////////////////////////////////////////////////////////////////
-typedef libMesh::TransientLinearImplicitSystem MonodomainSystem;
 typedef libMesh::TransientLinearImplicitSystem ElectroSystem;
 typedef libMesh::TransientExplicitSystem IonicModelSystem;
 typedef libMesh::ExplicitSystem ParameterSystem;
-typedef libMesh::TransientExplicitSystem MonoExplicitSystem;
 
 ElectroSolverExplicit* createMonodomainExplicit(libMesh::EquationSystems &es)
 {
@@ -140,27 +138,20 @@ void MonodomainExplicit::setup_systems(GetPot &data, std::string section)
     // Starts by creating the equation systems
     // 1) ADR
     std::cout << "* MONODOMAIN EXP: Creating new System for the monodomain diffusion reaction equation" << std::endl;
-    ElectroSystem &monodomain_system = M_equationSystems.add_system < ElectroSystem > (M_model);
-    // TO DO: Generalize to higher order
-    monodomain_system.add_variable("Q", M_order, M_FEFamily);
-    // Add 3 matrices
-    monodomain_system.add_matrix("lumped_mass");
-    monodomain_system.add_matrix("high_order_mass");
-    // Add lumped mass matrix
-    monodomain_system.add_vector("lumped_mass_vector");
-    monodomain_system.add_matrix("mass");
-    monodomain_system.add_matrix("stiffness");
-    monodomain_system.add_vector("aux1");
-    monodomain_system.add_vector("aux2");
+    ElectroSystem & wave_system = M_equationSystems.add_system < ElectroSystem > ("wave");
+    // Consider adding below when changing from Wave to M_model
+    wave_system.add_matrix("Mel_times_Ke");
 
-    M_exporterNames.insert(M_model);
-
-    monodomain_system.init();
 
     // WAVE
-    MonoExplicitSystem &wave_system = M_equationSystems.add_system < MonoExplicitSystem > ("wave");
+ 
     wave_system.add_variable("V", M_order, M_FEFamily);
     M_exporterNames.insert("wave");
+    wave_system.add_vector("aux1");
+    wave_system.add_vector("aux2");
+
+    // M_exporterNames.insert(M_model); //Keep this here?? Maybe all change to monodomain_explicit and then we get rid of wave
+
     wave_system.init();
 
     // ///////////////////////////////////////////////////////////////////////
@@ -246,8 +237,7 @@ void MonodomainExplicit::cut(double time, std::string f)
 //    cut_system.update();
     IonicModelSystem &ionic_model_system = M_equationSystems.get_system < IonicModelSystem > ("ionic_model");
     // WAVE
-    MonoExplicitSystem &wave_system = M_equationSystems.add_system < MonoExplicitSystem > ("wave");
-    ElectroSystem &monodomain_system = M_equationSystems.get_system < ElectroSystem > (M_model);
+    ElectroSystem& wave_system = M_equationSystems.add_system < ElectroSystem > ("wave");
 
     auto first = cut_system.solution->first_local_index();
     auto last = cut_system.solution->last_local_index();
@@ -261,7 +251,6 @@ void MonodomainExplicit::cut(double time, std::string f)
 
     ionic_model_system.solution->close();
     wave_system.solution->close();
-    monodomain_system.solution->close();
     cut_system.solution->close();
 
     for (int index = first; index < last; index++)
@@ -272,12 +261,10 @@ void MonodomainExplicit::cut(double time, std::string f)
             if (M_equationType == EquationTypeExplicit::ReactionDiffusion)
             {
                 wave_system.solution->set(index, init_val[0]);
-                monodomain_system.solution->set(index, init_val[0]);
             }
             else
             {
                 wave_system.solution->set(index, init_val[0]);
-                monodomain_system.solution->set(index, 0.0);
             }
 //       std::cout << "ion value" << std::endl;
             for (int m = 0; m < n_vars; m++)
@@ -290,7 +277,6 @@ void MonodomainExplicit::cut(double time, std::string f)
 
     ionic_model_system.solution->close();
     wave_system.solution->close();
-    monodomain_system.solution->close();
     cut_system.solution->close();
 
 }
@@ -507,9 +493,8 @@ void MonodomainExplicit::amr(libMesh::MeshRefinement &mesh_refinement, const std
         p_error_estimator = new libMesh::DiscontinuityMeasure;
     else
         p_error_estimator = new libMesh::LaplacianErrorEstimator;
-    ElectroSystem &monodomain_system = M_equationSystems.get_system < ElectroSystem > (M_model);
     // WAVE
-    MonoExplicitSystem &wave_system = M_equationSystems.add_system < MonoExplicitSystem > ("wave");
+    ElectroSystem & wave_system = M_equationSystems.add_system < ElectroSystem > ("wave");
 
     p_error_estimator->estimate_error(wave_system, error);
     mesh_refinement.flag_elements_by_error_fraction(error);
@@ -535,14 +520,10 @@ void MonodomainExplicit::assemble_cg_matrices(double dt)
     const libMesh::Real Chi = M_equationSystems.parameters.get < libMesh::Real > ("Chi");
 
     // Get a reference to the LinearImplicitSystem we are solving
-    ElectroSystem &monodomain_system = M_equationSystems.get_system < ElectroSystem > (M_model);
+    ElectroSystem & wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
     //IonicModelSystem &ionic_model_system = M_equationSystems.get_system < IonicModelSystem > ("ionic_model");
 
-    monodomain_system.get_matrix("mass").zero();
-    monodomain_system.get_matrix("lumped_mass").zero();
-    monodomain_system.get_matrix("high_order_mass").zero();
-    monodomain_system.get_matrix("stiffness").zero();
-    monodomain_system.get_vector("lumped_mass_vector").zero();
+    wave_system.get_matrix("Mel_times_Ke").zero();
 
 
     ParameterSystem &fiber_system = M_equationSystems.get_system < ParameterSystem > ("fibers");
@@ -554,13 +535,13 @@ void MonodomainExplicit::assemble_cg_matrices(double dt)
     // object handles the index translation from node and element numbers
     // to degree of freedom numbers.  We will talk more about the  DofMap
     // in future examples.
-    const libMesh::DofMap &dof_map_monodomain = monodomain_system.get_dof_map();
+    const libMesh::DofMap &dof_map_wave = wave_system.get_dof_map();
     const libMesh::DofMap &dof_map_fibers = fiber_system.get_dof_map();
 
     // Get a constant reference to the Finite Element type
     // for the first (and only) variable in the system.
-    libMesh::FEType fe_type_qp1 = dof_map_monodomain.variable_type(0);
-    libMesh::FEType fe_type_qp2 = dof_map_monodomain.variable_type(0);
+    libMesh::FEType fe_type_qp1 = dof_map_wave.variable_type(0);
+    libMesh::FEType fe_type_qp2 = dof_map_wave.variable_type(0);
 
     // Build a Finite Element object of the specified type.  Since the
     // FEBase::build() member dynamically creates memory we will
@@ -665,7 +646,7 @@ void MonodomainExplicit::assemble_cg_matrices(double dt)
     {
         const libMesh::Elem *elem = *el;
         const unsigned int elem_id = elem->id();
-        dof_map_monodomain.dof_indices(elem, dof_indices);
+        dof_map_wave.dof_indices(elem, dof_indices);
         dof_map_fibers.dof_indices(elem, dof_indices_fibers);
 
         // Compute the element-specific data for the current
@@ -753,16 +734,11 @@ void MonodomainExplicit::assemble_cg_matrices(double dt)
             {
                 for (unsigned int j = 0; j < phi_qp2.size(); j++)
                 {
-                    // Mass term
-                    Me(i, j) += JxW_qp2[qp] * (phi_qp2[i][qp] * phi_qp2[j][qp]);
+                    // Lumped mass term
                     Mel(i, i) += JxW_qp2[qp] * (phi_qp2[i][qp] * phi_qp2[j][qp]);
-                    Fe(i) += JxW_qp2[qp] * (phi_qp2[i][qp] * phi_qp2[j][qp]);
                 }
             }
         }
-        monodomain_system.get_matrix("mass").add_matrix(Me, dof_indices);
-        monodomain_system.get_matrix("lumped_mass").add_matrix(Mel, dof_indices);
-        monodomain_system.get_vector("lumped_mass_vector").add_vector(Fe, dof_indices);
         for (unsigned int qp = 0; qp < qrule_stiffness.n_points(); qp++)
         {
             for (unsigned int i = 0; i < dphi_qp1.size(); i++)
@@ -774,23 +750,16 @@ void MonodomainExplicit::assemble_cg_matrices(double dt)
                     // stiffness term
                     Ke(i, j) += JxW_qp1[qp] * DgradV * dphi_qp1[j][qp];
                 }
+                // Calculate Mel^-1*Ke
+                Ke(i,i) = Ke(i,i)/Mel(i,i);
             }
         }
 
-        monodomain_system.get_matrix("stiffness").add_matrix(Ke, dof_indices);
+        wave_system.get_matrix("Mel_times_Ke").add_matrix(Ke, dof_indices);
     }
     std::cout << "* \t looping over elements done. Closing ...  " << std::endl;
-
-    // closing matrices and vectors
-    monodomain_system.get_matrix("mass").close();
-    monodomain_system.get_matrix("lumped_mass").close();
-    monodomain_system.get_matrix("stiffness").close();
-    monodomain_system.get_vector("lumped_mass_vector").close();
-    monodomain_system.get_matrix("high_order_mass").close();
-    monodomain_system.get_matrix("high_order_mass").add(0.5, monodomain_system.get_matrix("mass"));
-    monodomain_system.get_matrix("high_order_mass").add(0.5, monodomain_system.get_matrix("lumped_mass"));
-    monodomain_system.get_matrix("high_order_mass").close();
-
+   // closing  vectors
+    wave_system.get_matrix("Mel_times_Ke").close();
     form_system_matrix(dt, false, "lumped_mass");
 }
 
@@ -842,7 +811,7 @@ void MonodomainExplicit::setup_local_conductivity(libMesh::TensorValue<double> &
 
 void MonodomainExplicit::form_system_matrix(double dt, bool /*useMidpoint */, const std::string &mass)
 {
-    ElectroSystem &monodomain_system = M_equationSystems.get_system < ElectroSystem > (M_model);
+    // ElectroSystem &monodomain_system = M_equationSystems.get_system < ElectroSystem > (M_model);
 // WAVE
     std::cout << "* MONODOMAIN EXP: forming system matrix using the " << mass << " matrix" << std::endl;
     M_systemMass = mass;
@@ -850,40 +819,39 @@ void MonodomainExplicit::form_system_matrix(double dt, bool /*useMidpoint */, co
 
     const libMesh::Real tau = M_equationSystems.parameters.get < libMesh::Real > ("tau");
 
-    monodomain_system.matrix->zero();
-    monodomain_system.matrix->close();
+    // monodomain_system.matrix->zero();
+    // monodomain_system.matrix->close();
 
 // Coefficient for matrix
     // SBDF1
     double cdt = dt;
     // TEST --------------------------------
     // S = Cm M
-    monodomain_system.matrix->add(Cm , monodomain_system.get_matrix(mass));
+    // monodomain_system.matrix->add(Cm , monodomain_system.get_matrix(mass));
 
     // //---------------------------------------
     // // S = Cm M Q^n+1 + tau / (c * dt) * Cm * M dQ + c dt K Q^n+1
     // monodomain_system.matrix->add(Cm * (1.0 + tau / (cdt)), monodomain_system.get_matrix(mass));
-    // monodomain_system.matrix->add(cdt, monodomain_system.get_matrix("stiffness"));
+    // monodomain_system.matrix->add(cdt, monodomain_system.get_matrix("Mel_times_Ke"));
 }
 
 void MonodomainExplicit::form_system_rhs(double dt, bool useMidpoint, const std::string &mass)
 {
-    MonodomainSystem &monodomain_system = M_equationSystems.get_system < MonodomainSystem > (M_model);
 // WAVE
-    MonoExplicitSystem &wave_system = M_equationSystems.get_system < MonoExplicitSystem > ("wave");
+    ElectroSystem & wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
     IonicModelSystem &iion_system = M_equationSystems.get_system < IonicModelSystem > ("iion");
     IonicModelSystem &istim_system = M_equationSystems.get_system < IonicModelSystem > ("istim");
 
     double Cm = 1.0; //M_ionicModelPtr->membraneCapacitance();
     const libMesh::Real tau = M_equationSystems.parameters.get < libMesh::Real > ("tau"); // time constant
 
-    monodomain_system.rhs->zero();
-    monodomain_system.rhs->close();
+    wave_system.rhs->zero();
+    wave_system.rhs->close();
 
-    auto &aux1 = monodomain_system.get_vector("aux1");
+    auto &aux1 = wave_system.get_vector("aux1");
     aux1.zero();
     aux1.close();
-    auto &aux2 = monodomain_system.get_vector("aux2");
+    auto &aux2 = wave_system.get_vector("aux2");
     aux2.zero();
     aux2.close();
 
@@ -896,75 +864,60 @@ void MonodomainExplicit::form_system_rhs(double dt, bool useMidpoint, const std:
 // commmon part is: -dt * Chi * M * I^n
 //iion_system.solution->scale(dt*Chi);
 
-    // Forward Euler
-    double cdt = dt;
-    // RHS = - K*V^n+M*I^n+1
-    aux1.add(1.0, *wave_system.old_local_solution);
-  
 
-//    // SBDF1
-//         double cdt = dt;
-//         // RHS WAVE = Cm * tau / cdt * M * Q^n
-//         //          - K * Z^n                            // Z^n = V^n
-//         //          - M * I^n - tau * M * dI^n - M * Istim
+//------------------------
+// SSP-RK2
 
-//         // First compute -(I^n + tau * dI^n + Istim)
-//         // I^n
-//         total_current.add(-1.0, *iion_system.solution);
-//         // tau * dI^n
-//         total_current.add(-tau, iion_system.get_vector("diion"));
-//         // Istim
-//         total_current.add(-1.0, *istim_system.solution);
+//Calculate aux1
+    // First compute Ml^-1 * K * V^n
+    wave_system.get_matrix("Mel_times_Ke").vector_mult_add(aux1, *wave_system.old_local_solution);
 
-//         // Then compute M * ( I^n + tau * dI^n + Istim ) = M * total_current
-//         // adding it to the system RHS
-//         monodomain_system.get_matrix(mass).vector_mult_add(*monodomain_system.rhs, total_current);
+    // dt/Cm * Ml^-1 * K * V^n
+    aux1.scale(dt/Cm);
 
-//         //if(tau>0)
-//         {
-//             // Second we compute the time derivative term
-//             // Cm * tau / cdt * M * Q^n
-//             //
-//             // We store Cm * tau / cdt * Q^n in aux1
-//             aux1.add(Cm * tau / cdt, *monodomain_system.old_local_solution);
-//             // Then we added to the RHS
-//             // M * aux1
-//             monodomain_system.get_matrix(M_systemMass).vector_mult_add(*monodomain_system.rhs, aux1);
+    // Then compute -dt/Cm * (I^n + Istim)
+    // -dt/Cm * I^n
+    aux1.add(-dt/Cm, *iion_system.solution);
+    // -dt/Cm * Istim
+    aux1.add(-dt/Cm, *istim_system.solution);
 
-//             // Third compute - K * Z^n
-//             // We store -Z^n in aux2, but
-//             aux2.add(-1.0, *wave_system.old_local_solution);
-//             // Then we added to the RHS
-//             // K * aux2
-//             monodomain_system.get_matrix("stiffness").vector_mult_add(*monodomain_system.rhs, aux2);
-//         }
+    //Finally, sum V^n
+    aux1.add(1, *wave_system.old_local_solution);
+
+//Calculate aux2
+    // First compute Ml^-1 * K * aux1
+    wave_system.get_matrix("Mel_times_Ke").vector_mult_add(aux2, aux1);
+
+    // dt/Cm * Ml^-1 * K * aux1
+    aux2.scale(dt/Cm);
+
+    // Then compute -dt/Cm * (I^n + Istim)
+    // -dt/Cm * I^n
+    aux2.add(-dt/Cm, *iion_system.solution);
+    // -dt/Cm * Istim
+    aux2.add(-dt/Cm, *istim_system.solution);
+
+    //Finally, sum aux1
+    aux2.add(1, aux1);
+
+    // V^n+1 = (aux1+aux2)/2
+    wave_system.rhs->add(aux1);
+    wave_system.rhs->add(aux2);
+    wave_system.rhs->scale(0.5);
+
 }
 
 void MonodomainExplicit::solve_diffusion_step(double dt, double time, bool useMidpoint, const std::string &mass, bool reassemble)
 {
-// FORM RHS
-    ElectroSystem &monodomain_system = M_equationSystems.get_system < ElectroSystem > (M_model);
-//std::cout << "form_system_rhs" << std::endl;
-    form_system_rhs(dt, useMidpoint, mass);
-//std::cout << "form_system_rhs done" << std::endl;
-    const libMesh::Real tau = M_equationSystems.parameters.get < libMesh::Real > ("tau"); // time constant
-    double tol = 1e-12;
-    double max_iter = 2000;
 
-    std::pair<unsigned int, double> rval = std::make_pair(0, 0.0);
-
-    // Solving for Q^(n+1) 
-    rval = M_linearSolver->solve(*monodomain_system.matrix, *monodomain_system.solution, *monodomain_system.rhs, tol, max_iter);
-    // std::cout << "solve done" << std::endl;
-
-// WAVE
-    MonoExplicitSystem &wave_system = M_equationSystems.get_system < MonoExplicitSystem > ("wave");
+    ElectroSystem & wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
     {
-        // Use BDF1
-        // V^n+1 = dt * Q^n+1 + V^n
-        *wave_system.solution = *monodomain_system.solution;
-        wave_system.solution->scale(dt);
-        *wave_system.solution += *wave_system.old_local_solution;
+        //Update older_local_solution
+        *wave_system.older_local_solution = *wave_system.old_local_solution;
+        // Update old_local solution
+        *wave_system.old_local_solution = *wave_system.solution;
+        // V^n+1 = right hand side
+        *wave_system.solution = *wave_system.rhs;
     }
 
     M_timestep_counter++;

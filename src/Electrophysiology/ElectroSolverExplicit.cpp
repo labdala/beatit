@@ -61,6 +61,15 @@
 #include "Electrophysiology/Pacing/PacingProtocolSpirit.hpp"
 #include "Util/IO/io.hpp"
 
+// Overload the division operator to be able to divide an std::vector by a double scalar
+template <typename T>
+std::vector<T> operator/(const std::vector<T>& b, const double& a) {
+    std::vector<T> c(b.size());
+    for(int i=0;i<b.size();++i)
+        c[i] = b[i] / a;
+    return c;
+}
+
 namespace BeatIt
 {
 // ///////////////////////////////////////////////////////////////////////
@@ -169,9 +178,9 @@ namespace BeatIt
         IonicModelSystem& Iion_system = M_equationSystems.add_system < IonicModelSystem > ("iion");
         Iion_system.add_variable("iion", M_order, M_FEFamily);
         Iion_system.add_vector("ionic_model_map");
-        Iion_system.add_vector("diion");
-        Iion_system.add_vector("diion_old");
         Iion_system.add_vector("total_current");
+        Iion_system.add_vector("iion_k1");
+        Iion_system.add_vector("iion_k2");
         Iion_system.init();
         M_ionicModelExporterNames.insert("iion");
 
@@ -1172,14 +1181,12 @@ namespace BeatIt
         // Update 
         // I_ion^(n-1) = iion_system.older_local_solution
         //     I_ion^n = iion_system.old_local_solution
-        //    dI_ion^n = (I_ion(t_n) - I_ion(t_n-1))/dt = iion_system.get_vector("diion")   ?????
         IonicModelSystem& iion_system = M_equationSystems.get_system < IonicModelSystem > ("iion");
         iion_system.solution->close();
         iion_system.old_local_solution->close();
         iion_system.older_local_solution->close();
         *iion_system.older_local_solution = *iion_system.old_local_solution;
         *iion_system.old_local_solution = *iion_system.solution;
-        iion_system.get_vector("diion_old") = iion_system.get_vector("diion");
         iion_system.update();
     }
 
@@ -1282,8 +1289,7 @@ namespace BeatIt
     void ElectroSolverExplicit::solve_reaction_step_cg(double dt, double time, int step, bool useMidpoint, const std::string& mass, libMesh::NumericVector<libMesh::Number>* I4f_ptr)
     {
         const libMesh::MeshBase & mesh = M_equationSystems.get_mesh();
-//    BidomainSystem& bidomain_system = M_equationSystems.get_system
-//            < BidomainSystem > ("bidomain"); //Q
+
         // ElectroSystem& system = M_equationSystems.get_system < ElectroSystem > (M_model);
         IonicModelSystem& istim_system = M_equationSystems.get_system < IonicModelSystem > ("istim");
         // WAVE
@@ -1297,9 +1303,8 @@ namespace BeatIt
         istim_system.get_vector("surf_stim_i").zero();
         istim_system.get_vector("surf_stim_e").zero();
         iion_system.solution->zero();
-        iion_system.get_vector("diion").zero();
 
-        //iion_system.old_local_solution->zero();
+        iion_system.old_local_solution->zero();
 
         double Cm = 1.0;        //M_ionicModelPtr->membraneCapacitance();
 
@@ -1334,7 +1339,6 @@ namespace BeatIt
             double stim_e = 0.0;
             double surf_stim_e = 0.0;
 
-            double dIion = 0.0;
 
             const libMesh::Node * nn = *node;
             // Are we in the bath?
@@ -1356,7 +1360,6 @@ namespace BeatIt
 
                 double Iion_old = 0.0;
                 double v = (*wave_system.old_local_solution)(dof_indices_V[0]); //V^n
-                double gating_rhs_ = (*wave_system.old_local_solution)(dof_indices_V[0]); //Q^n
                 Iion_old = (*iion_system.old_local_solution)(dof_indices_istim[0]); // gating
                 int key = iion_system.get_vector("ionic_model_map")(dof_indices_istim[0]);
                 auto it_ionic_model = M_ionicModelPtrMap.find(key);
@@ -1382,11 +1385,9 @@ namespace BeatIt
                     int num_vars = ionic_model_system.n_vars();
                    // std::cout << "ionic_model_system_name: " << ionicModelPtr->ionicModelName() << ", num_vars: " << num_vars << std::endl;
                     std::vector<double> values(num_vars + 1, 0.0);
+                    std::vector<double> k1(num_vars + 1, 0.0);
                     values[0] = v; //V^n
                     std::vector<double> old_values(num_vars + 1, 0.0);
-                    std::vector<double> gating_rhs(num_vars + 1, 0.0); // First entry is reserved to Q^n
-                    gating_rhs[0] = gating_rhs_; //Q^n
-                    std::vector<double> gating_rhs_old(num_vars + 1, 0.0); // First entry is reserved to Q^n-1
                     const libMesh::DofMap & dof_map_gating = ionic_model_system.get_dof_map();
                     dof_map_gating.dof_indices(nn, dof_indices_gating);
 
@@ -1401,44 +1402,36 @@ namespace BeatIt
                     if (TimeIntegratorExplicit::FirstOrderSSPRK2 == M_timeIntegrator) 
                     {
                         // Updating variables from ionic ODE system
+                        // Calculate k1
                         ionicModelPtr->updateVariables(values, istim, dt); 
+                        k1  = values;
 
+                        // //Calculate k2 and store in values
+                        // ionicModelPtr->updateVariables(values, istim, dt); 
+                        
+                        // l2-norm
+                        double accum = 0.;
+                        for (int i = 0; i < values.size(); ++i) {
+                            accum += values[i] * values[i];
+                        }
+                        double norm = sqrt(accum);
+                    
+                        // std::cout 
+                        // << "istim = "<< istim
+                        // << ", norm = " <<  norm << std::endl;
+
+                        // // SSP-RK2: values = (k1+values)/2
+                        // std::transform (k1.begin(), k1.end(), values.begin(), values.begin(), std::plus<double>());
+                        // values =  values / 2.0; 
                     }
-                    else // using SBDF2
+                    else // Second order time step - implementation reference : ElectroSolver.cpp
                     {
-                        if (M_timestep_counter >= 0)
-                        {
-                            bool overwrite = true;
-                            // Recall: gating_rhs[0] = Q^n
-                            ionicModelPtr->updateVariables(values, gating_rhs, istim, dt, overwrite);
-                        }
-                        else
-                        {
-                            bool overwrite = false;
-                            // Recall: gating_rhs[0] = Q^n
-                            ionicModelPtr->updateVariables(values, gating_rhs, istim, dt, overwrite);
-                            for (int nv = 0; nv < values.size(); ++nv)
-                            {
-                                var_index = dof_indices_gating[nv];
-                                ionic_model_system.rhs->set(var_index, gating_rhs[nv + 1]);
-
-                                old_values[nv + 1] = (*ionic_model_system.older_local_solution)(var_index);
-                                double f_nm1 = iion_rhs_old(var_index);
-                                double f_n = gating_rhs[nv + 1];
-                                // Update using SBDF2
-                                // w^n+1 = 4/3 * w^n - 1/3 * w^n-1 + 2/3*dt * (2*f^n - f^n-1)
-                                // w^n+1 = ( 4 * w^n - w^n-1 + 2 * dt * (2*f^n - f^n-1) ) / 3
-                                values[nv + 1] = (4.0 * values[nv + 1] - old_values[nv + 1] + 2.0 * dt * (2 * f_n - f_nm1)) / 3;
-                            }
-                        }
-
+                      throw std::runtime_error("second order time-stepping not implemented yet");
                     }
                     double Iion = ionicModelPtr->current_scaling() * ionicModelPtr->evaluateIonicCurrent(values, istim, dt);
-                    // Recall: gating_rhs[0] = Q^n
-                    // HACK: For now, as I've implemented the second order scheme only for a dew ionic models
-                    //       I keep everything as it was before I started the implementation of SBDF2
-                    if (ionicModelPtr->isSecondOrderImplemented()) dIion = ionicModelPtr->evaluateIonicCurrentTimeDerivative(values, gating_rhs, dt, M_meshSize);
-                    else dIion = ionicModelPtr->evaluateIonicCurrentTimeDerivative(values, old_values, dt, M_meshSize);
+                    // Recall -- it was the case: gating_rhs[0] = Q^n
+                    //  For now, assuming time-stepping is only first order
+
 
                     // stretch-activated currents
                     double Isac = 0.0;
@@ -1456,13 +1449,6 @@ namespace BeatIt
                     istim_system.get_vector("stim_e").set(dof_indices_istim[0], stim_e); //Istim^n+1
                     istim_system.get_vector("surf_stim_e").set(dof_indices_istim[0], surf_stim_e); //Istim^n+1
 
-                    iion_system.get_vector("diion").set(dof_indices_istim[0], dIion);
-                    for (int nv = 0; nv < num_vars; ++nv)
-                    {
-                        var_index = dof_indices_gating[nv];
-
-                        ionic_model_system.solution->set(var_index, values[nv + 1]);
-                    }
                 }
             // }
             c++;
@@ -1480,8 +1466,6 @@ namespace BeatIt
         istim_system.get_vector("stim_e").close();
         istim_system.get_vector("surf_stim_i").close();
         istim_system.get_vector("surf_stim_e").close();
-        iion_system.get_vector("diion").close();
-        iion_system.get_vector("diion_old").close();
 
         for (auto && name : M_ionic_models_systems_name_vec)
         {

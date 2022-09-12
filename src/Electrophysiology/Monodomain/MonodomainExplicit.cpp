@@ -140,18 +140,21 @@ void MonodomainExplicit::setup_systems(GetPot &data, std::string section)
     std::cout << "* MONODOMAIN EXP: Creating new System for the monodomain diffusion reaction equation" << std::endl;
     ElectroSystem & wave_system = M_equationSystems.add_system < ElectroSystem > ("wave");
     // Consider adding below when changing from Wave to M_model
-    wave_system.add_matrix("Mel_times_Ke");
-
-
-    // WAVE
- 
-    wave_system.add_variable("V", M_order, M_FEFamily);
-    M_exporterNames.insert("wave");
+    // Add 3 matrices
+    wave_system.add_matrix("lumped_mass");
+    wave_system.add_matrix("mass_constrained");
+    //wave_system.add_matrix("Mel_times_Ke");
+    // Add lumped mass matrix
+    wave_system.add_vector("lumped_mass_vector");
+    wave_system.add_matrix("mass");
+    wave_system.add_matrix("stiffness");
     wave_system.add_vector("aux1");
     wave_system.add_vector("aux2");
 
-    // M_exporterNames.insert(M_model); //Keep this here?? Maybe all change to monodomain_explicit and then we get rid of wave
+    M_exporterNames.insert(M_model);
 
+    wave_system.add_variable("V", M_order, M_FEFamily);
+    M_exporterNames.insert("wave");
     wave_system.init();
 
     // ///////////////////////////////////////////////////////////////////////
@@ -256,10 +259,12 @@ void MonodomainExplicit::cut(double time, std::string f)
             if (M_equationType == EquationTypeExplicit::ReactionDiffusion)
             {
                 wave_system.solution->set(index, init_val[0]);
+                //wave_system.solution->set(index, init_val[0]);
             }
             else
             {
                 wave_system.solution->set(index, init_val[0]);
+                //wave_system.solution->set(index, 0.0);
             }
 //       std::cout << "ion value" << std::endl;
             for (int m = 0; m < n_vars; m++)
@@ -486,11 +491,17 @@ void MonodomainExplicit::amr(libMesh::MeshRefinement &mesh_refinement, const std
 
 void MonodomainExplicit::assemble_matrices(double dt)
 {
-    assemble_cg_matrices(dt);
+    if (M_FEFamily == libMesh::MONOMIAL || M_FEFamily == libMesh::L2_LAGRANGE)
+        assemble_dg_matrices(dt);
+    else
+    {
+        assemble_cg_matrices(dt);
+    }
+
 }
 
 // Continuous Galerkin
-void MonodomainExplicit::assemble_cg_matrices(double dt) 
+void MonodomainExplicit::assemble_cg_matrices(double dt)
 {
     std::cout << "* MONODOMAIN: Assembling CG matrices ... " << std::endl;
     using std::unique_ptr;
@@ -500,12 +511,16 @@ void MonodomainExplicit::assemble_cg_matrices(double dt)
     const unsigned int max_dim = 3;
     const libMesh::Real Chi = M_equationSystems.parameters.get < libMesh::Real > ("Chi");
 
+    ElectroSystem &wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
     // Get a reference to the LinearImplicitSystem we are solving
-    ElectroSystem & wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
     //IonicModelSystem &ionic_model_system = M_equationSystems.get_system < IonicModelSystem > ("ionic_model");
 
-    wave_system.get_matrix("Mel_times_Ke").zero();
-
+    wave_system.get_matrix("mass").zero();
+    wave_system.get_matrix("lumped_mass").zero();
+    wave_system.get_matrix("mass_constrained").zero();
+    //wave_system.get_matrix("Mel_times_Ke").zero();
+    wave_system.get_matrix("stiffness").zero();
+    wave_system.get_vector("lumped_mass_vector").zero();
 
     ParameterSystem &fiber_system = M_equationSystems.get_system < ParameterSystem > ("fibers");
     ParameterSystem &sheets_system = M_equationSystems.get_system < ParameterSystem > ("sheets");
@@ -574,6 +589,7 @@ void MonodomainExplicit::assemble_cg_matrices(double dt)
     //  Number, which allows the same code to work for real
     // or complex numbers.
     libMesh::DenseMatrix<libMesh::Number> Ke;
+    libMesh::DenseMatrix<libMesh::Number> Me;
     libMesh::DenseMatrix<libMesh::Number> Mel;
     libMesh::DenseVector<libMesh::Number> Fe;
 
@@ -581,6 +597,7 @@ void MonodomainExplicit::assemble_cg_matrices(double dt)
     // the element.  These define where in the global system
     // the element degrees of freedom get mapped.
     std::vector < libMesh::dof_id_type > dof_indices;
+    std::vector < libMesh::dof_id_type > dof_indices_aux;
     std::vector < libMesh::dof_id_type > dof_indices_fibers;
 
     // Now we will loop over all the elements in the mesh.
@@ -647,6 +664,7 @@ void MonodomainExplicit::assemble_cg_matrices(double dt)
         // members will automatically zero out the matrix  and vector.
         auto n_dofs = dof_indices.size();
         Ke.resize(n_dofs, n_dofs);
+        Me.resize(n_dofs, n_dofs);
         Mel.resize(n_dofs, n_dofs);
         Fe.resize(n_dofs);
 
@@ -703,7 +721,7 @@ void MonodomainExplicit::assemble_cg_matrices(double dt)
         double Dnn = (*conductivity_system.solution)(dof_indices_fibers[2]);
 
         setup_local_conductivity(D0, Dff, Dss, Dnn, f0, s0, n0);
-        D0 /= Chi;
+        //D0 /= Chi;
 
         // Assemble Mass terms
         for (unsigned int qp = 0; qp < qrule_mass.n_points(); qp++)
@@ -713,11 +731,16 @@ void MonodomainExplicit::assemble_cg_matrices(double dt)
             {
                 for (unsigned int j = 0; j < phi_qp2.size(); j++)
                 {
-                    // Lumped mass term
+                    // Mass term
+                    Me(i, j) += JxW_qp2[qp] * (phi_qp2[i][qp] * phi_qp2[j][qp]);
                     Mel(i, i) += JxW_qp2[qp] * (phi_qp2[i][qp] * phi_qp2[j][qp]);
+                    Fe(i) += JxW_qp2[qp] * (phi_qp2[i][qp] * phi_qp2[j][qp]);
                 }
             }
         }
+        wave_system.get_matrix("mass").add_matrix(Me, dof_indices);
+        wave_system.get_matrix("lumped_mass").add_matrix(Mel, dof_indices);
+        wave_system.get_vector("lumped_mass_vector").add_vector(Fe, dof_indices);
         for (unsigned int qp = 0; qp < qrule_stiffness.n_points(); qp++)
         {
             for (unsigned int i = 0; i < dphi_qp1.size(); i++)
@@ -731,32 +754,52 @@ void MonodomainExplicit::assemble_cg_matrices(double dt)
                 }
             }
         }
+ 
+        //---------------------------------------
+        // Imposing Homogeneous Dirichlet BCs
 
-        // std::cout<< "--------------------------" << std::endl;
-        // std::cout << " Ke" << std::endl;
-        // std::cout << Ke << std::endl;
-
-        // Calculate Mel^-1*Ke
-        for (unsigned int i = 0; i < Ke.m(); i++)
-        {
-            //invert lumped mass
-            Mel(i, i) = 1/Mel(i, i);
-            Ke(i,i) = Ke(i,i)*(Mel(i,i));
-        }   
-
-        // std::cout<< "--------------------------" << std::endl;
-        // std::cout << " Ke/Mel" << std::endl;
-        // std::cout << Ke << std::endl;
-        // std::cout<< "--------------------------" << std::endl;
-        // std::cout << " Mel^-1" << std::endl;
-        // std::cout << Mel << std::endl;
+        // const libMesh::DofMap& dof_map = wave_system.get_dof_map();
+        libMesh::Real penalty = 1.e10;
         
+        // // The value of the shape functions at the quadrature
+        // // points.
+        // const std::vector<std::vector<libMesh::Real>>& phi_face = fe_face->get_phi();
+        // // The Jacobian * Quadrature Weight at the quadrature
+        // // points on the face.
+        // const std::vector<libMesh::Real>& JxW_face = fe_face->get_JxW();
+        // for (const auto& elem : mesh.active_local_element_ptr_range())
+        // {
+        //     dof_map.dof_indices(elem, dof_indices_aux);
+        //     auto n_dofs = dof_indices_aux.size();
+        //     // check if element is on the boundary
+            for (auto side : elem->side_index_range()){
+                if (elem->neighbor_ptr(side) == nullptr)
+                {
+                    auto idx_side_node = elem->nodes_on_side(side);
+                    //assume 2 nodes per side
+                    Me(idx_side_node[0],idx_side_node[0]) *=penalty;
+                    Me(idx_side_node[1],idx_side_node[1]) *=penalty;
+                }
+            }
+        // }              
+        wave_system.get_matrix("mass_constrained").add_matrix(Me, dof_indices); 
+        // std::cout<< "--------------------------" << std::endl;
+        // std::cout << " Me" << std::endl;
+        // std::cout << Me << std::endl;
 
-        wave_system.get_matrix("Mel_times_Ke").add_matrix(Ke, dof_indices);
+
+        wave_system.get_matrix("stiffness").add_matrix(Ke, dof_indices);
     }
     std::cout << "* \t looping over elements done. Closing ...  " << std::endl;
-   // closing  vectors
-    wave_system.get_matrix("Mel_times_Ke").close();
+
+    // closing matrices and vectors
+    wave_system.get_matrix("mass").close();
+    wave_system.get_matrix("lumped_mass").close();
+    wave_system.get_matrix("mass_constrained").close();
+    wave_system.get_matrix("stiffness").close();
+    wave_system.get_vector("lumped_mass_vector").close();
+
+    form_system_matrix(dt, false, "mass");
 }
 
 void MonodomainExplicit::setup_local_conductivity(libMesh::TensorValue<double> &D0, double Dff, double Dss, double Dnn, double *f0, double *s0, double *n0)
@@ -804,6 +847,510 @@ void MonodomainExplicit::setup_local_conductivity(libMesh::TensorValue<double> &
     }
 }
 
+void MonodomainExplicit::assemble_dg_matrices(double dt)
+{
+    std::cout << "* MONODOMAIN: Assembling DG matrices ... " << std::endl;
+    using std::unique_ptr;
+
+    const libMesh::MeshBase &mesh = M_equationSystems.get_mesh();
+    const unsigned int dim = mesh.mesh_dimension();
+    const unsigned int max_dim = 3;
+    const libMesh::Real Chi = M_equationSystems.parameters.get < libMesh::Real > ("Chi");
+
+// Get a reference to the LinearImplicitSystem we are solving
+    ElectroSystem &wave_system = M_equationSystems.get_system < ElectroSystem > (M_model);
+    IonicModelSystem &ionic_model_system = M_equationSystems.get_system < IonicModelSystem > ("ionic_model");
+
+    wave_system.get_matrix("mass").zero();
+    wave_system.get_matrix("lumped_mass").zero();
+    wave_system.get_matrix("stiffness").zero();
+    wave_system.get_vector("lumped_mass_vector").zero();
+
+//     MatSetOption( (dynamic_cast<libMesh::PetscMatrix<libMesh::Number> >(wave_system.get_matrix("stiffness"))).mat(), MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
+//     MatSetOption( (dynamic_cast<libMesh::PetscMatrix<libMesh::Number> * >(wave_system.matrix))->mat(), MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);
+
+    ParameterSystem &fiber_system = M_equationSystems.get_system < ParameterSystem > ("fibers");
+    ParameterSystem &sheets_system = M_equationSystems.get_system < ParameterSystem > ("sheets");
+    ParameterSystem &xfiber_system = M_equationSystems.get_system < ParameterSystem > ("xfibers");
+    ParameterSystem &conductivity_system = M_equationSystems.get_system < ParameterSystem > ("conductivity");
+
+// A reference to the  DofMap object for this system.  The  DofMap
+// object handles the index translation from node and element numbers
+// to degree of freedom numbers.  We will talk more about the  DofMap
+// in future examples.
+    const libMesh::DofMap &dof_map_monodomain = wave_system.get_dof_map();
+    const libMesh::DofMap &dof_map_fibers = fiber_system.get_dof_map();
+
+// Get a constant reference to the Finite Element type
+// for the first (and only) variable in the system.
+    libMesh::FEType fe_type_qp1 = dof_map_monodomain.variable_type(0);
+    libMesh::FEType fe_type_qp2 = dof_map_monodomain.variable_type(0);
+
+// Build a Finite Element object of the specified type.  Since the
+// FEBase::build() member dynamically creates memory we will
+// store the object as a std::unique_ptr<FEBase>.  This can be thought
+// of as a pointer that will clean up after itself.  Introduction Example 4
+// describes some advantages of  std::unique_ptr's in the context of
+// quadrature rules.
+    std::unique_ptr < libMesh::FEBase > fe_qp1(libMesh::FEBase::build(dim, fe_type_qp1));
+    std::unique_ptr < libMesh::FEBase > fe_qp2(libMesh::FEBase::build(dim, fe_type_qp2));
+
+// A 5th order Gauss quadrature rule for numerical integration.
+    libMesh::QGauss qrule_stiffness(dim, libMesh::SECOND);
+// A 5th order Gauss quadrature rule for numerical integration.
+    libMesh::QGauss qrule_mass(dim, libMesh::THIRD);
+
+// Tell the finite element object to use our quadrature rule.
+    fe_qp1->attach_quadrature_rule(&qrule_stiffness);
+    fe_qp2->attach_quadrature_rule(&qrule_mass);
+// Here we define some references to cell-specific data that
+// will be used to assemble the linear system.
+//
+// The element Jacobian * quadrature weight at each integration point.
+    const std::vector<libMesh::Real> &JxW_qp1 = fe_qp1->get_JxW();
+    const std::vector<libMesh::Real> &JxW_qp2 = fe_qp2->get_JxW();
+
+// The physical XY locations of the quadrature points on the element.
+// These might be useful for evaluating spatially varying material
+// properties at the quadrature points.
+    const std::vector<libMesh::Point> &q_point_qp1 = fe_qp1->get_xyz();
+    const std::vector<libMesh::Point> &q_point_qp2 = fe_qp2->get_xyz();
+
+// The element shape functions evaluated at the quadrature points.
+    const std::vector<std::vector<libMesh::Real> > &phi_qp1 = fe_qp1->get_phi();
+    const std::vector<std::vector<libMesh::Real> > &phi_qp2 = fe_qp2->get_phi();
+
+// The element shape function gradients evaluated at the quadrature
+// points.
+    const std::vector<std::vector<libMesh::RealGradient> > &dphi_qp1 = fe_qp1->get_dphi();
+    const std::vector<std::vector<libMesh::RealGradient> > &dphi_qp2 = fe_qp2->get_dphi();
+
+    const std::vector<std::vector<libMesh::Real> > &dphidx_qp1 = fe_qp1->get_dphidx();
+    const std::vector<std::vector<libMesh::Real> > &dphidy_qp1 = fe_qp1->get_dphidy();
+    const std::vector<std::vector<libMesh::Real> > &dphidz_qp1 = fe_qp1->get_dphidz();
+
+// Define data structures to contain the element matrix
+// and right-hand-side vector contribution.  Following
+// basic finite element terminology we will denote these
+// "Ke" and "Fe".  These datatypes are templated on
+//  Number, which allows the same code to work for real
+// or complex numbers.
+    libMesh::DenseMatrix<libMesh::Number> Ke;
+    libMesh::DenseMatrix<libMesh::Number> Me;
+    libMesh::DenseMatrix<libMesh::Number> Mel;
+    libMesh::DenseVector<libMesh::Number> Fe;
+
+// for interior penalty
+    std::unique_ptr < libMesh::FEBase > fe_elem_face(libMesh::FEBase::build(dim, fe_type_qp1));
+    std::unique_ptr < libMesh::FEBase > fe_neighbor_face(libMesh::FEBase::build(dim, fe_type_qp1));
+// Tell the finite element object to use our quadrature rule.
+    libMesh::QGauss qface(dim - 1, fe_type_qp1.default_quadrature_order());
+
+    fe_elem_face->attach_quadrature_rule(&qface);
+    fe_neighbor_face->attach_quadrature_rule(&qface);
+// Data for surface integrals on the element boundary
+    const std::vector<std::vector<libMesh::Real> > &phi_face = fe_elem_face->get_phi();
+    const std::vector<std::vector<libMesh::RealGradient> > &dphi_face = fe_elem_face->get_dphi();
+    const std::vector<libMesh::Real> &JxW_face = fe_elem_face->get_JxW();
+    const std::vector<libMesh::Point> &qface_normals = fe_elem_face->get_normals();
+    const std::vector<libMesh::Point> &qface_points = fe_elem_face->get_xyz();
+// Data for surface integrals on the neighbor boundary
+    const std::vector<std::vector<libMesh::Real> > &phi_neighbor_face = fe_neighbor_face->get_phi();
+    const std::vector<std::vector<libMesh::RealGradient> > &dphi_neighbor_face = fe_neighbor_face->get_dphi();
+// Data structures to contain the element and neighbor boundary matrix
+// contribution. This matrices will do the coupling beetwen the dofs of
+// the element and those of his neighbors.
+// Ken: matrix coupling elem and neighbor dofs
+    libMesh::DenseMatrix<libMesh::Number> Kne;
+    libMesh::DenseMatrix<libMesh::Number> Ken;
+    libMesh::DenseMatrix<libMesh::Number> Kee;
+    libMesh::DenseMatrix<libMesh::Number> Knn;
+
+    double deltaKn = 0.0;
+    double deltaKn_neighobor = 0.0;
+
+// This vector will hold the degree of freedom indices for
+// the element.  These define where in the global system
+// the element degrees of freedom get mapped.
+    std::vector < libMesh::dof_id_type > dof_indices;
+    std::vector < libMesh::dof_id_type > dof_indices_fibers;
+
+// Now we will loop over all the elements in the mesh.
+// We will compute the element matrix and right-hand-side
+// contribution.
+//
+// Element iterators are a nice way to iterate through all the
+// elements, or all the elements that have some property.  The
+// iterator el will iterate from the first to// the last element on
+// the local processor.  The iterator end_el tells us when to stop.
+// It is smart to make this one const so that we don't accidentally
+// mess it up!  In case users later modify this program to include
+// refinement, we will be safe and will only consider the active
+// elements; hence we use a variant of the active_elem_iterator.
+    libMesh::MeshBase::const_element_iterator el = mesh.active_local_elements_begin();
+    const libMesh::MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
+
+// Loop over the elements.  Note that  ++el is preferred to
+// el++ since the latter requires an unnecessary temporary
+// object.
+    double f0[3];
+    double s0[3];
+    double n0[3];
+    libMesh::RealGradient DgradV;
+    libMesh::TensorValue<double> D0;
+    libMesh::TensorValue<double> D0_neighbor;
+
+    for (; el != end_el; ++el)
+    {
+        const libMesh::Elem *elem = *el;
+        const unsigned int elem_id = elem->id();
+        dof_map_monodomain.dof_indices(elem, dof_indices);
+        dof_map_fibers.dof_indices(elem, dof_indices_fibers);
+
+        // Compute the element-specific data for the current
+        // element.  This involves computing the location of the
+        // quadrature points (q_point) and the shape functions
+        // (phi, dphi) for the current element.
+        fe_qp1->reinit(elem);
+        fe_qp2->reinit(elem);
+
+        // Zero the element matrix and right-hand side before
+        // summing them.  We use the resize member here because
+        // the number of degrees of freedom might have changed from
+        // the last element.  Note that this will be the case if the
+        // element type is different (i.e. the last element was a
+        // triangle, now we are on a quadrilateral).
+
+        // The  DenseMatrix::resize() and the  DenseVector::resize()
+        // members will automatically zero out the matrix  and vector.
+        auto n_dofs = dof_indices.size();
+        Ke.resize(n_dofs, n_dofs);
+        Me.resize(n_dofs, n_dofs);
+        Mel.resize(n_dofs, n_dofs);
+        Fe.resize(n_dofs);
+
+        //        std::cout << "Fibers" << std::endl;
+        // fiber direction
+        f0[0] = (*fiber_system.solution)(dof_indices_fibers[0]);
+        f0[1] = (*fiber_system.solution)(dof_indices_fibers[1]);
+        f0[2] = (*fiber_system.solution)(dof_indices_fibers[2]);
+        // sheet direction
+        s0[0] = (*sheets_system.solution)(dof_indices_fibers[0]);
+        s0[1] = (*sheets_system.solution)(dof_indices_fibers[1]);
+        s0[2] = (*sheets_system.solution)(dof_indices_fibers[2]);
+        // crossfiber direction
+        n0[0] = (*xfiber_system.solution)(dof_indices_fibers[0]);
+        n0[1] = (*xfiber_system.solution)(dof_indices_fibers[1]);
+        n0[2] = (*xfiber_system.solution)(dof_indices_fibers[2]);
+        // Conductivity tensor
+        double Dff = (*conductivity_system.solution)(dof_indices_fibers[0]);
+        double Dss = (*conductivity_system.solution)(dof_indices_fibers[1]);
+        double Dnn = (*conductivity_system.solution)(dof_indices_fibers[2]);
+
+        setup_local_conductivity(D0, Dff, Dss, Dnn, f0, s0, n0);
+        D0 /= Chi;
+
+        // Assemble Mass terms
+        for (unsigned int qp = 0; qp < qrule_mass.n_points(); qp++)
+        {
+            //  Matrix
+            for (unsigned int i = 0; i < phi_qp2.size(); i++)
+            {
+                for (unsigned int j = 0; j < phi_qp2.size(); j++)
+                {
+                    // Mass term
+                    Me(i, j) += JxW_qp2[qp] * (phi_qp2[i][qp] * phi_qp2[j][qp]);
+                    Mel(i, i) += JxW_qp2[qp] * (phi_qp2[i][qp] * phi_qp2[j][qp]);
+                    Fe(i) += JxW_qp2[qp] * (phi_qp2[i][qp] * phi_qp2[j][qp]);
+                }
+            }
+        }
+        wave_system.get_matrix("mass").add_matrix(Me, dof_indices);
+        wave_system.get_matrix("lumped_mass").add_matrix(Mel, dof_indices);
+        wave_system.get_vector("lumped_mass_vector").add_vector(Fe, dof_indices);
+        // Assemble stiffness matrix
+        for (unsigned int qp = 0; qp < qrule_stiffness.n_points(); qp++)
+        {
+            for (unsigned int i = 0; i < dphi_qp1.size(); i++)
+            {
+                DgradV = D0 * dphi_qp1[i][qp];
+
+                for (unsigned int j = 0; j < dphi_qp1.size(); j++)
+                {
+                    // stiffness term
+                    Ke(i, j) += JxW_qp1[qp] * DgradV * dphi_qp1[j][qp];
+                }
+            }
+        }
+        wave_system.get_matrix("stiffness").add_matrix(Ke, dof_indices);
+
+        // If the element has no neighbor on a side then that
+        // side MUST live on a boundary of the domain.
+        for (unsigned int side = 0; side < elem->n_sides(); side++)
+        {
+            double gamma = 10.0;
+            if (elem->neighbor_ptr(side))
+            {
+                // Store a pointer to the neighbor we are currently
+                // working on.
+                const libMesh::Elem *neighbor = elem->neighbor_ptr(side);
+                // Get the global id of the element and the neighbor
+                const unsigned int neighbor_id = neighbor->id();
+
+                // WARNING!!!! NOTE!!!!
+                // Here I should use some check for amr:
+                // check libmesh test: miscellaneous_ex5
+                int random = rand() % 100 + 1;
+                if (random >= 10)
+                {
+                    // Pointer to the element side
+                    std::unique_ptr<const libMesh::Elem> elem_side(elem->build_side_ptr(side));
+
+                    // h dimension to compute the interior penalty penalty parameter
+                    const unsigned int elem_b_order = static_cast<unsigned int>(fe_elem_face->get_order());
+                    const unsigned int neighbor_b_order = static_cast<unsigned int>(fe_neighbor_face->get_order());
+                    const double side_order = (elem_b_order + neighbor_b_order) / 2.;
+                    // check against Ern, Stephansen, Zunino
+                    //const double penalty = 0.5 * gamma * elem_side->volume() * elem_side->volume();
+                    //const double h_elem = (elem->volume() / elem_side->volume()) / std::pow(side_order, 2.);
+                    const double h_elem = elem->hmax();
+
+                    // The quadrature point locations on the neighbor side
+                    std::vector < libMesh::Point > qface_neighbor_point;
+
+                    // The quadrature point locations on the element side
+                    std::vector < libMesh::Point > qface_point;
+
+                    // Reinitialize shape functions on the element side
+                    fe_elem_face->reinit(elem, side);
+
+                    // Get the physical locations of the element quadrature points
+                    qface_point = fe_elem_face->get_xyz();
+
+                    // Find their locations on the neighbor
+                    unsigned int side_neighbor = neighbor->which_neighbor_am_i(elem);
+                    libMesh::FEInterface::inverse_map(elem->dim(), fe_qp1->get_fe_type(), neighbor, qface_point, qface_neighbor_point);
+                    // Calculate the neighbor element shape functions at those locations
+                    fe_neighbor_face->reinit(neighbor, &qface_neighbor_point);
+                    // Get the degree of freedom indices for the
+                    // neighbor.  These define where in the global
+                    // matrix this neighbor will contribute to.
+                    std::vector < libMesh::dof_id_type > neighbor_dof_indices;
+                    std::vector < libMesh::dof_id_type > neighbor_fiber_dof_indices;
+                    dof_map_monodomain.dof_indices(neighbor, neighbor_dof_indices);
+                    dof_map_fibers.dof_indices(neighbor, neighbor_fiber_dof_indices);
+
+                    const unsigned int n_neighbor_dofs = neighbor_dof_indices.size();
+                    // Zero the element and neighbor side matrix before
+                    // summing them.  We use the resize member here because
+                    // the number of degrees of freedom might have changed from
+                    // the last element or neighbor.
+                    // Note that Kne and Ken are not square matrices if neighbor
+                    // and element have a different p level
+                    Kne.resize(n_neighbor_dofs, n_dofs);
+                    Ken.resize(n_dofs, n_neighbor_dofs);
+                    Kee.resize(n_dofs, n_dofs);
+                    Knn.resize(n_neighbor_dofs, n_neighbor_dofs);
+
+                    //        std::cout << "Fibers" << std::endl;
+                    // fiber direction
+                    f0[0] = (*fiber_system.solution)(neighbor_fiber_dof_indices[0]);
+                    f0[1] = (*fiber_system.solution)(neighbor_fiber_dof_indices[1]);
+                    f0[2] = (*fiber_system.solution)(neighbor_fiber_dof_indices[2]);
+                    // sheet direction
+                    s0[0] = (*sheets_system.solution)(neighbor_fiber_dof_indices[0]);
+                    s0[1] = (*sheets_system.solution)(neighbor_fiber_dof_indices[1]);
+                    s0[2] = (*sheets_system.solution)(neighbor_fiber_dof_indices[2]);
+                    // crossfiber direction
+                    n0[0] = (*xfiber_system.solution)(neighbor_fiber_dof_indices[0]);
+                    n0[1] = (*xfiber_system.solution)(neighbor_fiber_dof_indices[1]);
+                    n0[2] = (*xfiber_system.solution)(neighbor_fiber_dof_indices[2]);
+                    // Conductivity tensor
+                    double Dff = (*conductivity_system.solution)(neighbor_fiber_dof_indices[0]);
+                    double Dss = (*conductivity_system.solution)(neighbor_fiber_dof_indices[1]);
+                    double Dnn = (*conductivity_system.solution)(neighbor_fiber_dof_indices[2]);                    //
+
+                    setup_local_conductivity(D0_neighbor, Dff, Dss, Dnn, f0, s0, n0);
+                    D0_neighbor /= Chi;
+
+                    for (unsigned int qp = 0; qp < qface.n_points(); qp++)
+                    {
+                        double deltaKn = qface_normals[qp] * (D0 * qface_normals[qp]);
+                        double deltaKn_neighbor = qface_normals[qp] * (D0_neighbor * qface_normals[qp]);
+
+                        // e stands for elem
+                        // n for neighbor
+                        double we = deltaKn_neighbor / (deltaKn_neighbor + deltaKn);
+                        double wn = deltaKn / (deltaKn_neighbor + deltaKn);
+                        double gamma_K = we * deltaKn;
+                        double alpha = 1.0;
+                        double penalty = alpha * gamma_K / h_elem;
+                        // Kee Matrix. Integrate the element test function i
+                        // against the element test function j
+                        for (unsigned int i = 0; i < n_dofs; i++)
+                        {
+                            for (unsigned int j = 0; j < n_dofs; j++)
+                            {
+                                // consistency
+                                Kee(i, j) -= JxW_face[qp] * we * (qface_normals[qp] * (D0 * dphi_face[i][qp])) * phi_face[j][qp];
+                                Kee(i, j) -= JxW_face[qp] * we * (qface_normals[qp] * (D0 * dphi_face[j][qp])) * phi_face[i][qp];
+                                // stability
+                                Kee(i, j) += JxW_face[qp] * penalty * phi_face[j][qp] * phi_face[i][qp];
+                            }
+                        }
+
+                        // Knn Matrix. Integrate the neighbor test function i
+                        // against the neighbor test function j
+                        for (unsigned int i = 0; i < n_neighbor_dofs; i++)
+                        {
+                            for (unsigned int j = 0; j < n_neighbor_dofs; j++)
+                            {
+                                // consistency
+                                //Kee(i, j) += penalty * JxW_face[qp] * (qface_normals[qp] * dphi_neighbor_face[i][qp])
+                                //       * (qface_normals[qp] * dphi_neighbor_face[j][qp]);
+
+//                                Knn(i,j) +=
+//                                        penalty * JxW_face[qp] *
+//                                  (phi_neighbor_face[j][qp]*(qface_normals[qp]*dphi_neighbor_face[i][qp]) +
+//                                   phi_neighbor_face[i][qp]*(qface_normals[qp]*dphi_neighbor_face[j][qp]));
+
+                                Knn(i, j) -= JxW_face[qp] * wn * (qface_normals[qp] * (D0_neighbor * dphi_neighbor_face[i][qp])) * phi_neighbor_face[j][qp];
+                                Knn(i, j) -= JxW_face[qp] * wn * (qface_normals[qp] * (D0_neighbor * dphi_neighbor_face[j][qp])) * phi_neighbor_face[i][qp];
+                                // stability
+                                Knn(i, j) += JxW_face[qp] * penalty * phi_neighbor_face[j][qp] * phi_neighbor_face[i][qp];
+                            }
+                        }
+
+                        // Kne Matrix. Integrate the neighbor test function i
+                        // against the element test function j
+                        for (unsigned int i = 0; i < n_neighbor_dofs; i++)
+                        {
+                            for (unsigned int j = 0; j < n_dofs; j++)
+                            {
+                                // consistency
+                                Kne(i, j) -= JxW_face[qp] * wn * (qface_normals[qp] * (D0 * dphi_neighbor_face[i][qp])) * phi_face[j][qp];
+                                Kne(i, j) -= JxW_face[qp] * we * (qface_normals[qp] * (D0 * dphi_face[j][qp])) * phi_neighbor_face[i][qp];
+                                // consistency
+//                                 Kne(i,j) +=
+//                                         penalty * JxW_face[qp] *
+//                                  (phi_neighbor_face[i][qp]*(qface_normals[qp]*dphi_face[j][qp]) -
+//                                   phi_face[j][qp]*(qface_normals[qp]*dphi_neighbor_face[i][qp]));
+
+                                // stability
+                                Kne(i, j) -= JxW_face[qp] * penalty * phi_face[j][qp] * phi_neighbor_face[i][qp];
+                            }
+                        }
+
+                        // Ken Matrix. Integrate the element test function i
+                        // against the neighbor test function j
+                        for (unsigned int i = 0; i < n_dofs; i++)
+                        {
+                            for (unsigned int j = 0; j < n_neighbor_dofs; j++)
+                            {
+                                // consistency
+                                Ken(i, j) -= JxW_face[qp] * we * (qface_normals[qp] * (D0 * dphi_face[i][qp])) * phi_neighbor_face[j][qp];
+                                Ken(i, j) -= JxW_face[qp] * wn * (qface_normals[qp] * (D0 * dphi_neighbor_face[j][qp])) * phi_face[i][qp];
+//                                Ken(i,j) +=
+//                                        penalty * JxW_face[qp] *
+//                                  (phi_neighbor_face[j][qp]*(qface_normals[qp]*dphi_face[i][qp]) -
+//                                   phi_face[i][qp]*(qface_normals[qp]*dphi_neighbor_face[j][qp]));
+
+                                // stability
+                                Ken(i, j) -= JxW_face[qp] * penalty * phi_face[i][qp] * phi_neighbor_face[j][qp];
+                            }
+                        }
+                    }
+
+                    wave_system.get_matrix("stiffness").add_matrix(Kee, dof_indices);
+                    wave_system.get_matrix("stiffness").add_matrix(Knn, neighbor_dof_indices);
+                    wave_system.get_matrix("stiffness").add_matrix(Kne, neighbor_dof_indices, dof_indices);
+                    wave_system.get_matrix("stiffness").add_matrix(Ken, dof_indices, neighbor_dof_indices);
+
+                }
+
+            }
+            else // we are on the boundary
+            {
+                // Pointer to the element side
+                std::unique_ptr<const libMesh::Elem> elem_side(elem->build_side_ptr(side));
+
+                // h dimension to compute the interior penalty penalty parameter
+                const unsigned int elem_b_order = static_cast<unsigned int>(fe_elem_face->get_order());
+                const double side_order = elem_b_order;
+                // check against Ern, Stephansen, Zunino
+                //const double penalty = 0.5 * gamma * elem_side->volume() * elem_side->volume();
+                const double h_elem = elem->hmax();
+                //(elem->volume() / elem_side->volume()) / std::pow(side_order, 2.);
+
+                // The quadrature point locations on the element side
+                std::vector < libMesh::Point > qface_point;
+
+                // Reinitialize shape functions on the element side
+                fe_elem_face->reinit(elem, side);
+
+                // Get the physical locations of the element quadrature points
+                qface_point = fe_elem_face->get_xyz();
+
+                // Zero the element and neighbor side matrix before
+                // summing them.  We use the resize member here because
+                // the number of degrees of freedom might have changed from
+                // the last element or neighbor.
+                // Note that Kne and Ken are not square matrices if neighbor
+                // and element have a different p level
+                Kee.resize(n_dofs, n_dofs);
+
+                for (unsigned int qp = 0; qp < qface.n_points(); qp++)
+                {
+                    double deltaKn = qface_normals[qp] * (D0 * qface_normals[qp]);
+                    double gamma_K = deltaKn;
+                    double we = 1.0;
+                    double alpha = 1.0;
+                    double penalty = alpha * gamma_K / h_elem;
+                    // Kee Matrix. Integrate the element test function i
+                    // against the element test function j
+                    for (unsigned int i = 0; i < n_dofs; i++)
+                    {
+                        for (unsigned int j = 0; j < n_dofs; j++)
+                        {
+                            // consistency
+                            Kee(i, j) -= JxW_face[qp] * we * (qface_normals[qp] * (D0 * dphi_face[i][qp])) * phi_face[j][qp];
+                            Kee(i, j) -= JxW_face[qp] * we * (qface_normals[qp] * (D0 * dphi_face[j][qp])) * phi_face[i][qp];
+                            // stability
+                            //Kee(i, j) += JxW_face[qp] * penalty * phi_face[j][qp] * phi_face[i][qp];
+                        }
+                    }
+                }
+
+                //wave_system.get_matrix("stiffness").add_matrix(Kee, dof_indices);
+            }
+        }
+
+    }
+// closing matrices and vectors
+    wave_system.get_matrix("mass").close();
+    wave_system.get_matrix("lumped_mass").close();
+    wave_system.get_matrix("stiffness").close();
+    wave_system.get_vector("lumped_mass_vector").close();
+
+    form_system_matrix(dt, false, "lumped_mass");
+}
+
+void MonodomainExplicit::form_system_matrix(double dt, bool /*useMidpoint */, const std::string &mass)
+{
+    ElectroSystem &wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
+// WAVE
+    std::cout << "* MONODOMAIN EXP: forming system matrix using the " << mass << " matrix" << std::endl;
+    M_systemMass = mass;
+    double Cm = 1.0; // M_ionicModelPtr->membraneCapacitance();
+
+    wave_system.matrix->zero();
+    wave_system.matrix->close();
+
+    {
+        wave_system.matrix->add(1.0, wave_system.get_matrix("mass_constrained"));
+    }
+}
+
 void MonodomainExplicit::form_system_rhs(double dt, bool useMidpoint, const std::string &mass)
 {
 // WAVE
@@ -826,66 +1373,80 @@ void MonodomainExplicit::form_system_rhs(double dt, bool useMidpoint, const std:
     auto &total_current = iion_system.get_vector("total_current");
     total_current.zero();
     total_current.close();
-// RHS part:
-// Evaluate
-
-// commmon part is: -dt * Chi * M * I^n
-//iion_system.solution->scale(dt*Chi);
-
-
-//------------------------
-// Forward Euler
-
-    // First compute  (I^n + Istim)
-    // I^n
-    total_current.add(-1.0, *iion_system.solution);
     // Istim
-    total_current.add(-1.0, *istim_system.solution);
-    // adding it to the system RHS
-    wave_system.rhs->add(1.0, total_current);
-    
+    //total_current.add(-1.0, *istim_system.solution);
 
-    // We store - V^n in aux1
-    aux1.add(-1.0, *wave_system.old_local_solution);
-    // Then we added to the RHS
-    // Ml^-1 * K * aux1
-    wave_system.get_matrix("Mel_times_Ke").vector_mult_add(*wave_system.rhs, aux1);
+    aux1.add(-dt, *wave_system.old_local_solution);
+    wave_system.get_matrix("stiffness").vector_mult_add(*wave_system.rhs, aux1);
+    wave_system.get_matrix("mass").vector_mult_add(*wave_system.rhs, *wave_system.old_local_solution);
 
 
-//// To do SSP-RK2 => Calculate aux2 using 2 dif values for Iion
-// (need to get from ElectroSolverExplicit)
+    const libMesh::MeshBase &mesh = M_equationSystems.get_mesh(); 
+    const libMesh::DofMap& dof_map = wave_system.get_dof_map();
+    std::vector < libMesh::dof_id_type > dof_indices;
+    std::vector< libMesh::dof_id_type > d0, d1;
+    std::vector< unsigned int > idx_side_node ;
 
-    // // Then compute -dt/Cm * (I^n + Istim)
-    // // -dt/Cm * I^n
-    // aux2.add(-dt/Cm, *iion_system.solution);
-    // // -dt/Cm * Istim
-    // aux2.add(-dt/Cm, *istim_system.solution);
+    //Imposing homogeneous Dirichlet BCs
+    for (const auto& elem : mesh.active_local_element_ptr_range())
+    {
+        dof_map.dof_indices(elem, dof_indices);
+        auto n_dofs = dof_indices.size();
+        // check if element is on the boundary
+        for (auto side : elem->side_index_range()){
+            if (elem->neighbor_ptr(side) == nullptr)
+            {
+                // get nodes on this side
+                idx_side_node = elem->nodes_on_side(side);
+                // find the (global) degrees of freedom associated with them 
+                //assuming here just 2 nodes per side
+                dof_map.dof_indices(elem->node_ptr(idx_side_node[0]), d0);	
+                dof_map.dof_indices(elem->node_ptr(idx_side_node[1]), d1);	
+                for (unsigned int i = 0; i != d0.size(); i++)
+                {
+                    libMesh::numeric_index_type j=i;
+                    wave_system.rhs->set(d0[j], 0);
+                    wave_system.rhs->set(d1[j], 0);
+                }
+            }
+        }
+    }
 
-    // //Finally, sum aux1
-    // aux2.add(1, aux1);
-
-//     // V^n+1 = (aux1+aux2)/2
-    //  wave_system.rhs->add(aux1);
-//     wave_system.rhs->add(aux2);
-//     wave_system.rhs->scale(0.5);
-
-
-    std::cout   << "------------------------\n" 
-                << ", ws.solution = " << wave_system.solution->linfty_norm()
-                << ", aux1= " << aux1.linfty_norm()
-                << ", aux2= " << aux2.linfty_norm()
-                << ", iion = " << iion_system.solution->linfty_norm()
-                << ", istim = " << istim_system.solution->linfty_norm()
-                << std::endl;
 }
 
 void MonodomainExplicit::solve_diffusion_step(double dt, double time, bool useMidpoint, const std::string &mass, bool reassemble)
 {
+    
+    ElectroSystem &wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
     form_system_rhs(dt, useMidpoint, mass);
-    ElectroSystem & wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
-   *wave_system.solution = *wave_system.rhs;
-    wave_system.solution->scale(dt);
-    *wave_system.solution += *wave_system.old_local_solution;
+
+// If we are using SBDF2, we need to compute the system matrix again
+// In fact we do a first step with Forward-Backward Euler
+// and then we proceed with SBDF2
+// std::cout << "call from system matrix? " << M_timestep_counter << std::endl;
+    // if (M_timestep_counter == 1 && TimeIntegrator::SecondOrderIMEX == M_timeIntegrator)
+    // {
+    //     std::cout << "Yes! call from system matrix: " << M_timestep_counter << std::endl;
+    //     form_system_matrix(dt, false, M_systemMass);
+    // }
+//++M_timestep_counter;
+
+    double tol = 1e-12;
+    double max_iter = 2000;
+
+    std::pair<unsigned int, double> rval = std::make_pair(0, 0.0);
+
+std::cout << "Solving" << std::endl;
+//wave_system.matrix->print();
+//wave_system.rhs->print();
+rval = M_linearSolver->solve(*wave_system.matrix, *wave_system.solution, *wave_system.rhs, tol, max_iter);
+
+// std::cout << "solve done" << std::endl;
+// WAVE
+
+    // *wave_system.solution = *wave_system.solution;
+    // wave_system.solution->scale(dt);
+    // *wave_system.solution += *wave_system.old_local_solution;
 
     M_timestep_counter++;
 }

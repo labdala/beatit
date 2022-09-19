@@ -27,44 +27,51 @@
  */
 
 /*
- * .hpp
+ * Monowave.hpp
  *
  *  Created on: Oct 27, 2016
  *      Author: srossi
  */
 
-#ifndef SRC_ELECTROPHYSIOLOGY_Bidomain_HPP_
-#define SRC_ELECTROPHYSIOLOGY_Bidomain_HPP_
 
-#include "Electrophysiology/ElectroSolver.hpp"
+#ifndef SRC_ELECTROPHYSIOLOGY_MONODOMAIN_EXPLICIT_HPP_
+#define SRC_ELECTROPHYSIOLOGY_MONODOMAIN_EXPLICIT_HPP_
+
 #include "Electrophysiology/ElectroSolverExplicit.hpp"
 
 namespace BeatIt
 {
 
 
-
-//enum class BidomainAnisotropy {Isotropic, TransverselyIsotropic, Orthotropic };
-//enum class BidomainEquationType { ParabolicEllipticBidomain,
-//	                              ParabolicEllipticHyperbolic,
-//								  ParabolicParabolicHyperbolic };
-//
-//enum class BidomainTimeIntegrator { FirstOrderIMEX, SecondOrderIMEX };
-
 /// Class
-class BidomainWithBath : public virtual ElectroSolver
+class MonodomainExplicit : public virtual ElectroSolverExplicit
 {
 public:
+    typedef libMesh::GMVIO Exporter;
+    // Another alternative when not using AMR
+    typedef libMesh::ExodusII_IO EXOExporter;
+
     /// Empty construcor
 //    Monodomain( libMesh::MeshBase & mesh );
-    BidomainWithBath( libMesh::EquationSystems& es );
-    ~BidomainWithBath();
-    void setup_systems(GetPot& data, std::string section = "");
+    MonodomainExplicit( libMesh::EquationSystems& es );
+    ~MonodomainExplicit();
+    void setup_systems(GetPot& data, std::string section = "monodomain_explicit" );
 
     void init_systems(double time);
+
+    void amr( libMesh:: MeshRefinement& mesh_refinement, const std::string& type = "kelly" );
+
+
+    void cut(double time, std::string f);
     void assemble_matrices(double dt = 1.0);
-    void form_system_matrix(double dt, bool useMidpoint = true, const std::string& mass = "lumped_mass") {}
+    void assemble_dg_matrices(double dt = 1.0);
+    void assemble_cg_matrices(double dt = 1.0);
+    void setup_local_conductivity(libMesh::TensorValue<double>& D0,
+                                           double Dff, double Dss, double Dnn,
+                                           double * f0, double * s0, double * n0);
     void form_system_rhs(double dt, bool useMidpoint = true, const std::string& mass = "lumped_mass");
+    void form_system_matrix(double dt, bool useMidpoint = true, const std::string& mass = "mass");
+
 //    void solve_reaction_step( double dt,
 //                              double time,
 //                              int step = 0,
@@ -74,27 +81,20 @@ public:
 
     void solve_diffusion_step(double dt, double time,  bool useMidpoint = true, const std::string& mass = "lumped_mass", bool reassemble = true);
 
+    void generate_fibers(   const GetPot& data,
+                            const std::string& section = "rule_based_fibers" );
 
-
-    // For Dirichlet Boundary conditions
-    // We use the boundary info to get the list of node with the specified ID
-    std::vector< libMesh::dof_id_type >      M_node_id_list;
-    std::vector< libMesh::boundary_id_type > M_bc_id_list;
-    // For ground node
-    int M_ground_point_id;
 };
 
 
-
-ElectroSolver* createBidomainWithBath( libMesh::EquationSystems& es );
+ElectroSolverExplicit* createMonodomainExplicit( libMesh::EquationSystems& es );
 
 namespace
 {
-    static bool register_bidomain_bath = BeatIt::ElectroSolver::ElectroFactory::Register("bidomainbath", &createBidomainWithBath);
+    static bool register_monodomain_explicit = BeatIt::ElectroSolverExplicit::ElectroFactory::Register("monodomain_explicit", &createMonodomainExplicit);
 }
-
 
 } /* namespace BeatIt */
 
 
-#endif /* SRC_ELECTROPHYSIOLOGY_Bidomain_HPP_ */
+#endif /* SRC_ELECTROPHYSIOLOGY_MONODOMAIN_EXPLICIT_HPP_ */

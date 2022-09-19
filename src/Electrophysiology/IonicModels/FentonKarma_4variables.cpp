@@ -251,7 +251,7 @@ FentonKarma4v::updateVariables(std::vector<double>& v_n, std::vector<double>& v_
     v_np1[3] = v_n[3] + 0.5 * dt * ( ds_n + ds_np1 );
 }
 
-
+//SBDF2
 void 
 FentonKarma4v::updateVariables(std::vector<double>& variables, std::vector<double>& rhs, double appliedCurrent, double dt, bool overwrite)
 {
@@ -282,7 +282,7 @@ FentonKarma4v::updateVariables(std::vector<double>& variables, std::vector<doubl
 }
 
 
-
+// SBDF1
 void
 FentonKarma4v::updateVariables(double V, std::vector<double>& variables, double dt)
 {

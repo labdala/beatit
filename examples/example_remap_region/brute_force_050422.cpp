@@ -15,6 +15,11 @@
 #include <tuple>
 #include "Util/IO/io.hpp"
 #include <libmesh/boundary_mesh.h>
+#include "libmesh/equation_systems.h"
+#include "libmesh/vtk_io.h"
+#include "libmesh/nemesis_io.h"
+#include "libmesh/linear_implicit_system.h"
+#include "libmesh/explicit_system.h"
 
 int main(int argc, char ** argv)
 {
@@ -29,12 +34,14 @@ int main(int argc, char ** argv)
     // one for the conforming mesh
     // one with the regions to be mapped
     libMesh::Mesh mesh(init.comm());
-
+    libMesh::ExodusII_IO importer(mesh);
+    
     std::string mesh_file = data("input_mesh", "NONE");
     if ("NONE" != mesh_file)
     {
         std::cout << "Reading mesh " << mesh_file << std::endl;
-        mesh.read(mesh_file);
+        //mesh.read(mesh_file);
+        importer.read(mesh_file);
     }
     else
     {
@@ -47,9 +54,6 @@ int main(int argc, char ** argv)
 
     libMesh::MeshBase::const_element_iterator el = mesh.active_local_elements_begin();
     const libMesh::MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
-
-    std::cout << "Information about mesh" << std::endl;
-    mesh.print_info();
 
     // set bc flags
     //bool set_bc_flags = data("bc", false);
@@ -92,6 +96,7 @@ int main(int argc, char ** argv)
             c++;
             if( c % 100000 == 0) std::cout << "Elem: " << c << std::endl;
             Elem * elem = *el;
+            elem->subdomain_id()=1;
             for (int s = 0; s < elem->n_sides(); ++s)
             {
                 if (nullptr == elem->neighbor_ptr(s))
@@ -190,6 +195,7 @@ int main(int argc, char ** argv)
                         bc_missing_elements++;
                         bc_missing_elem.insert(elID);
                         //std::cout << "\n Missed elem: " << bc_missing_elements << std::endl;
+                        //return 0;
                     }
 
                 }
@@ -237,10 +243,63 @@ int main(int argc, char ** argv)
 
         mesh.prepare_for_use();
     }
-    std::cout << "Export to new mesh" << std::endl;
-    std::string output_file = data("output", "remapped_mesh.e");
-    ExodusII_IO exporter(mesh);
-    exporter.write(output_file);
+    libMesh::EquationSystems  equation_systems(mesh);
+    typedef libMesh::ExplicitSystem  FiberSystem;
+    FiberSystem& fiber_system = equation_systems.add_system<FiberSystem>("fibers");
+    fiber_system.add_variable("fibersX", libMesh::CONSTANT, libMesh::MONOMIAL);
+    fiber_system.add_variable("fibersY", libMesh::CONSTANT, libMesh::MONOMIAL);
+    fiber_system.add_variable("fibersZ", libMesh::CONSTANT, libMesh::MONOMIAL);
+    fiber_system.init();
+    auto& f_v = fiber_system.solution;
+
+    equation_systems.print_info();
+
+    unsigned int step=1;
+    auto& elem_var_names = importer.get_elem_var_names();
+    for (auto && var : elem_var_names) std::cout << var << std::endl;
+
+    const int num_fiber_systems = 1;
+    std::vector < std::string > fibers(num_fiber_systems);
+    fibers[0] = "fibers";
+
+
+    for (auto && var : elem_var_names) std::cout << var << std::endl;
+    auto elem_first = elem_var_names.begin();
+    auto elem_end = elem_var_names.end();
+    for (int k = 0; k < num_fiber_systems; ++k)
+    {
+       libMesh::System& system = equation_systems.get_system(fibers[k]);
+       std::string name = system.name();
+       std::cout << "Importing System: " << name << std::endl;
+       int n_vars = system.n_vars();
+       std::cout << "nvars = " << n_vars << std::endl;
+       for (int l = 0; l < n_vars; ++l)
+       {
+           std::cout << "l=" << l << std::endl;
+           std::string var_name = system.variable_name(l);
+           auto elem_it = std::find(elem_first, elem_end, var_name);
+           std::cout << "elem_it=" << * elem_it << std::endl;
+           if (elem_it != elem_end)
+           {
+               std::cout << "\t elemental variable: " << *elem_it << std::endl;
+               importer.copy_elemental_solution(system, *elem_it, *elem_it, step);
+           }
+       }
+     }
+
+    // Export fibers in nemesis format
+    ExodusII_IO nemesis_exporter(mesh); // creates the exporter
+    std::vector<std::string> output_variables(3); // creates a vector that stores the names of vectors
+    output_variables[0] = "fibersX";
+    output_variables[1] = "fibersY";
+    output_variables[2] = "fibersZ";
+
+    std::cout << "Export mesh" << std::endl;
+    std::string output_path = data("output", "remapped_mesh.e");
+    nemesis_exporter.write(output_path);
+    nemesis_exporter.set_output_variables(output_variables);
+    nemesis_exporter.write_equation_systems(output_path, equation_systems);
+    nemesis_exporter.write_element_data(equation_systems);    std::cout << "Export to new mesh" << std::endl;
 
     std::cout << "Good luck!" << std::endl;
     return 0;

@@ -11,6 +11,7 @@ include_directories ("${LIBMESH_DIR}/include")
 target_link_libraries(${TESTNAMEV} beatit)
 target_link_libraries(${TESTNAMEV} ${LIBMESH_LIB})
 target_link_libraries(${TESTNAMEV} ${VTK_LIBRARY_DIRS})
+target_link_libraries(${TESTNAMEV} /nas/longleaf/home/laryssa/dogwood/sfw/linux/libmesh/1.7.0/1.7.0-opt/lib/libtimpi_opt.so.3)
 
 
 SET_TARGET_PROPERTIES(${TESTNAME} PROPERTIES LINKER_LANGUAGE CXX)
@@ -28,6 +29,7 @@ include_directories ("${LIBMESH_DIR}/include")
 target_link_libraries(${TESTNAMEV} beatit)
 target_link_libraries(${TESTNAMEV} ${LIBMESH_LIB})
 target_link_libraries(${TESTNAMEV} ${VTK_LIBRARY_DIRS})
+target_link_libraries(${TESTNAMEV} /nas/longleaf/home/laryssa/dogwood/sfw/linux/libmesh/1.7.0/1.7.0-opt/lib/libtimpi_opt.so.3)
 
 
 SET_TARGET_PROPERTIES(${TESTNAME} PROPERTIES LINKER_LANGUAGE CXX)
@@ -45,6 +47,7 @@ include_directories ("${LIBMESH_DIR}/include")
 target_link_libraries(${TESTNAMEV} beatit)
 target_link_libraries(${TESTNAMEV} ${LIBMESH_LIB})
 target_link_libraries(${TESTNAMEV} ${VTK_LIBRARY_DIRS})
+target_link_libraries(${TESTNAMEV} /nas/longleaf/home/laryssa/dogwood/sfw/linux/libmesh/1.7.0/1.7.0-opt/lib/libtimpi_opt.so.3)
 
 
 SET_TARGET_PROPERTIES(${TESTNAME} PROPERTIES LINKER_LANGUAGE CXX)
@@ -62,6 +65,7 @@ include_directories ("${LIBMESH_DIR}/include")
 target_link_libraries(${TESTNAMEV} beatit)
 target_link_libraries(${TESTNAMEV} ${LIBMESH_LIB})
 target_link_libraries(${TESTNAMEV} ${VTK_LIBRARY_DIRS})
+target_link_libraries(${TESTNAMEV} /nas/longleaf/home/laryssa/dogwood/sfw/linux/libmesh/1.7.0/1.7.0-opt/lib/libtimpi_opt.so.3)
 
 SET_TARGET_PROPERTIES(${TESTNAME} PROPERTIES LINKER_LANGUAGE CXX)
 
@@ -79,6 +83,7 @@ include_directories ("${LIBMESH_DIR}/include")
 target_link_libraries(${TESTNAMEV} beatit)
 target_link_libraries(${TESTNAMEV} ${LIBMESH_LIB})
 target_link_libraries(${TESTNAMEV} ${VTK_LIBRARY_DIRS})
+target_link_libraries(${TESTNAMEV} /nas/longleaf/home/laryssa/dogwood/sfw/linux/libmesh/1.7.0/1.7.0-opt/lib/libtimpi_opt.so.3)
 
 SET_TARGET_PROPERTIES(${TESTNAME} PROPERTIES LINKER_LANGUAGE CXX)
 
@@ -95,6 +100,7 @@ include_directories ("${LIBMESH_DIR}/include")
 target_link_libraries(${TESTNAMEV} beatit)
 target_link_libraries(${TESTNAMEV} ${LIBMESH_LIB})
 target_link_libraries(${TESTNAMEV} ${VTK_LIBRARY_DIRS})
+target_link_libraries(${TESTNAMEV} /nas/longleaf/home/laryssa/dogwood/sfw/linux/libmesh/1.7.0/1.7.0-opt/lib/libtimpi_opt.so.3)
 
 SET_TARGET_PROPERTIES(${TESTNAME} PROPERTIES LINKER_LANGUAGE CXX)
 
@@ -111,6 +117,7 @@ include_directories ("${LIBMESH_DIR}/include")
 target_link_libraries(${TESTNAMEV} beatit)
 target_link_libraries(${TESTNAMEV} ${LIBMESH_LIB})
 target_link_libraries(${TESTNAMEV} ${VTK_LIBRARY_DIRS})
+target_link_libraries(${TESTNAMEV} /nas/longleaf/home/laryssa/dogwood/sfw/linux/libmesh/1.7.0/1.7.0-opt/lib/libtimpi_opt.so.3)
 
 SET_TARGET_PROPERTIES(${TESTNAME} PROPERTIES LINKER_LANGUAGE CXX)
 
@@ -126,6 +133,7 @@ include_directories ("${LIBMESH_DIR}/include")
 target_link_libraries(${TESTNAMEV} beatit)
 target_link_libraries(${TESTNAMEV} ${LIBMESH_LIB})
 target_link_libraries(${TESTNAMEV} ${VTK_LIBRARY_DIRS})
+target_link_libraries(${TESTNAMEV} /nas/longleaf/home/laryssa/dogwood/sfw/linux/libmesh/1.7.0/1.7.0-opt/lib/libtimpi_opt.so.3)
 
 SET_TARGET_PROPERTIES(${TESTNAME} PROPERTIES LINKER_LANGUAGE CXX)
 
@@ -143,5 +151,6 @@ include_directories ("${LIBMESH_DIR}/include")
 target_link_libraries(${TESTNAMEV} beatit)
 target_link_libraries(${TESTNAMEV} ${LIBMESH_LIB})
 target_link_libraries(${TESTNAMEV} ${VTK_LIBRARY_DIRS})
+target_link_libraries(${TESTNAMEV} /nas/longleaf/home/laryssa/dogwood/sfw/linux/libmesh/1.7.0/1.7.0-opt/lib/libtimpi_opt.so.3)
 
 SET_TARGET_PROPERTIES(${TESTNAME} PROPERTIES LINKER_LANGUAGE CXX)

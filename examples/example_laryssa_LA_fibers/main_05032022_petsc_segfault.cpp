@@ -235,8 +235,8 @@ void save_fibers(std::string e_test, std::string e_output_file_name, std::string
 
 	    // Export fibers in nemesis format
 	    ExodusII_IO nemesis_exporter(mesh); // creates the exporter
-	    /*std::vector<std::string> output_variables(13); // creates a vector that stores the names of vectors
-	    output_variables[0] = "fibersx";
+	    std::vector<std::string> output_variables(4); // creates a vector that stores the names of vectors
+	    /*output_variables[0] = "fibersx";
 	    output_variables[1] = "fibersy";
 	    output_variables[2] = "fibersz";
 	    output_variables[3] = "sheetsx";
@@ -249,18 +249,11 @@ void save_fibers(std::string e_test, std::string e_output_file_name, std::string
 	    output_variables[10] = "u1";
 	    output_variables[11] = "u2";
 	    output_variables[12] = "u3";*/
-	    std::vector<std::string> output_variables(10); // creates a vector that stores the names of vectors
 	    output_variables[0] = "sheetsx";
 	    output_variables[1] = "sheetsy";
 	    output_variables[2] = "sheetsz";
-	    output_variables[3] = "fibersx";
-	    output_variables[4] = "fibersy";
-	    output_variables[5] = "fibersz";
-	    output_variables[6]  = "u0";
-	    output_variables[7] = "u1";
-	    output_variables[8] = "u2";
-	    output_variables[9] = "u3";
-	     mesh.get_boundary_info().sideset_name(4)="mvr";
+	    output_variables[3] = "u0";
+	    mesh.get_boundary_info().sideset_name(4)="mvr";
         nemesis_exporter.set_output_variables(output_variables);
 	    nemesis_exporter.write_equation_systems(e_test + e_output_file_name + e_output_number + ".e", equation_systems); // saves the variables at the nodes
 	    nemesis_exporter.write_element_data(equation_systems); // this saves the variables at the centroid of the elements
@@ -329,7 +322,7 @@ void AnatomicalParameters::define_fibers(std::vector<double> & u, std::vector<li
     // Solve the transmural problem as the first one, such that
     // the next line is always true
 	s0 = du[0].unit();
-
+/*
     //	FIBERS FIRST WAY - TRADITIONAL - LIKE MILANO PAPER 2021
 	if(milano==1){
 		switch (block_id)
@@ -369,9 +362,9 @@ void AnatomicalParameters::define_fibers(std::vector<double> & u, std::vector<li
 		throw std::runtime_error("NOT MILANO!");
 		}
 
-f0 = f0.unit();
+f0 = f0.unit(); */
 s0 = s0.unit();
-n0 = n0.unit();
+//n0 = n0.unit();
 }
 
 
@@ -867,6 +860,61 @@ int main(int argc, char ** argv)
     // This will be done after initializing the Electrophysiology solver
     libMesh::ExodusII_IO importer(mesh);
 
+    // Create mesh:
+    // If we passed a specific filename for the mesh let'd read that
+    if ("NONE" != mesh_name)
+    {
+        int n_refinements = data("refs", 0);
+        std::cout << "n_refs: " << n_refinements << std::endl;
+        BeatIt::serial_mesh_partition(init.comm(), mesh_name, &mesh, n_refinements);
+        std::cout << "after serial mesh partition" << std::endl;
+    }
+    // If no mesh file has been specified
+    // we run on a cube
+    else
+    {
+        // number of elements in the x,y and z direction
+        int nelx = data("nelx", 10);
+        int nely = data("nely", 10);
+        // if nelz = 0 we run in 2D
+        int nelz = data("nelz", 10);
+        // the cube dimensions are defined as [minx, maxx] x [miny, maxy] x [minz, maxz]
+        double maxx = data("maxx", 1.0);
+        double maxy = data("maxy", 1.0);
+        double maxz = data("maxz", 1.0);
+
+        double minx = data("minx", 0.0);
+        double miny = data("miny", 0.0);
+        double minz = data("minz", 0.0);
+
+        // Create a tetrahedral mesh
+        auto elType = TET4;
+        // If we are in 2D, create a triangle mesh
+        if (nelz == 0)
+            elType = TRI3;
+
+        std::cout << "Creating the cube [" << minx << ", " << maxx << "] x ["
+                                           << miny << ", " << maxy << "] x ["
+                                           << minx << ", " << maxx << "] " << std::endl;
+        std::cout << "Using " << nelx << " x " << nely << " x " << nelz << " elements." << std::endl;
+        if(TET4 == elType) std::cout << "Element type TET4" << std::endl;
+        else if(TRI3 == elType) std::cout << "Element type TRI3" << std::endl;
+        else std::cout << "NO ELEMENT TYPE!!!" << std::endl;
+
+        // Create mesh
+        MeshTools::Generation::build_cube(mesh, nelx, nely, nelz, minx, maxx, miny, maxy, minz, maxz, elType);
+        // Usually we run using cm as dimensions
+        // use this part to scale the mesh if it exported in mm (or um)
+    }
+
+    double scale = data("scale", 1.0);
+    MeshTools::Modification::scale(mesh, scale, scale, scale);
+
+    // output the details about the mesh
+    mesh.print_info();
+
+    //-----------------------------------------
+
     // Create an equation systems object.
     EquationSystems equation_systems(mesh);
 
@@ -893,7 +941,7 @@ int main(int argc, char ** argv)
 
     // Declare the Poisson system and its variables.
     // The Poisson system is another example of a steady system.
-   LinearImplicitSystem& system = equation_systems.add_system<LinearImplicitSystem>("Poisson");
+    LinearImplicitSystem& system = equation_systems.add_system<LinearImplicitSystem>("Poisson");
 
     // Adds the variable "u" to "Poisson".  "u"
     // will be approximated using second-order approximation.
@@ -912,26 +960,30 @@ int main(int argc, char ** argv)
     equation_systems.print_info();
 
     // Reading the input for each of the problems
+    std::cout << "Reading the input for each of the" << N << "  problems" <<std::endl;
     for (int i = 0; i < N; i++) {
 
         std::string ui = "u" + std::to_string(i);    //how cool! to use i in the name here!!!
         ExplicitSystem& si = equation_systems.add_system<ExplicitSystem>(ui);
         si.add_variable(ui, FIRST);
         si.init();
-
+        
+        std::cout << "read input i=" << i << std::endl;
  	   //READ INPUT I > BE CAREFUL BECAUSE HERE I WILL BE OVERWRITTING WHAT I HAD BEFORE
  	   poisson_solver.read_input_i(i, equation_systems);
 
+        std::cout << " reinit " << std::endl;
        // reinit Poisson member variables using input file values
  	  poisson_solver.reinit(poisson_solver.dirichlet_x_list, poisson_solver.dirichlet_y_list,  poisson_solver.dirichlet_z_list,
  			  poisson_solver.dirichlet_r_list,  poisson_solver.dirichlet_side_set_list_aux, poisson_solver.dirichlet_bc_list_aux);
 
+      std::cout << "assemble_poisson" << std::endl;
  	  poisson_solver.assemble_poisson(equation_systems, "Poisson", i, anatomic_parameters);
 
-        //  Libmesh zeros out matrix and RHS when i call solve
+ /*       //  Libmesh zeros out matrix and RHS when i call solve
         // preventing that to happen:
         equation_systems.get_system<ImplicitSystem>("Poisson").zero_out_matrix_and_rhs=false;
-
+        std::cout << "solve poisson system i= "<< i << std::endl;
         equation_systems.get_system("Poisson").solve();
 
 
@@ -951,9 +1003,9 @@ int main(int argc, char ** argv)
         // Copy the content of "u" (solution to Poisson problem) to "ui"
         *si.solution = *equation_systems.get_system("Poisson").solution; // "unique vector"
         si.update(); //distributes/copies the solution of the global on the shared interface > local processor vectors - "repeated vector"
-
+*/
     }
-
+    std::cout << "Read output folder name" << std::endl;
     // Read output folder name from input file
     std::string output_folder_name = data("output_name", "Output_default");
     std::string output_number = data("output_number", "");
@@ -978,12 +1030,13 @@ int main(int argc, char ** argv)
     //
     // if you linked against the appropriate X libraries when you
     // built PETSc.
-
+/*
     const DofMap& dofmap = system.get_dof_map(); // replicating assembly function
 
     std::cout << " Looping over elements to set up subdomain IDs"<< std::endl;
 
     for (const auto& elem: mesh.active_local_element_ptr_range()) {
+       // elem->subdomain_id()=1;
         int blockid = elem->subdomain_id();
         libMesh::Point centroid = elem->vertex_average();
         std::vector<double> u(N);
@@ -1026,167 +1079,158 @@ int main(int argc, char ** argv)
     std::cout << "saving fibers" << std::endl;
     save_fibers(test, output_file_name, output_number, equation_systems, mesh);
 
+*/
 
-    std::string run_EP = data("run_EP", "0");
-    if(run_EP=='1')
+/*    // Information about the time, such as
+    // current iteration, timestep, final time etc
+    // can be conveniently read from the input file
+    // and stored in a TimeData abject
+    // In the input file specify
+    //
+    //    [time]
+    //        # Timestep
+    //        dt = 0.125      # Default: 1.0
+    //        # Simulation initial time
+    //        init_time = 0.0 # Default: 0.0
+    //        # Simulation end time
+    //        final_time = 10  # Default: 1.0
+    //        # Maximum number of timesteps
+    //        max_iter = 200000000   # Default: 99999999
+    //        # Export the solution every save_iter iterations
+    //        save_iter = 8   # Default: 1
+    //    [../]
+    //
+    // Create the TimeData object
+    BeatIt::TimeData datatime;
+    // Set it up using the input file
+    datatime.setup(data, "");
+    // Output on screen the stored variables
+    datatime.print();
+
+    // Create libMesh Equations systems
+    // This will hold the mesh and create the corresponding
+    // finite element spaces
+    //libMesh::EquationSystems es(mesh);
+
+
+    // Create the Electrophyiosiology model based on the input file
+    //
+    //   model = monowave
+    //   # The input parameters of the model are written
+    //   # in a section with the same name as 'model'
+    //   [monowave]
+    //       # PARAMETERS HERE
+    //   [../]
+    //
+    // Read the model from the input file
+    std::string model = data("model", "monowave");
+    std::cout << "Create Electrophysiology model ..." << std::endl;
+    // Create the model
+    BeatIt::ElectroSolver* solver = BeatIt::ElectroSolver::ElectroFactory::Create(model, equation_systems);
+    // Setup the EP model using the input file
+    std::cout << "Calling setup..." << std::endl;
+
+    solver->setup(data, model);
+
+    // Initialize systems
+    std::cout << "Eqution_systems info ..." << std::endl;
+    equation_systems.print_info();
+
+    // Set up initial conditions at time
+    std::cout << "Calling init ..." << std::endl;
+    solver->init(datatime.M_startTime);
+    // Now read the fibers if wanted
+
+    bool read_fibers = data("read_fibers", false);
+    if(read_fibers)
     {
-        // Information about the time, such as
-        // current iteration, timestep, final time etc
-        // can be conveniently read from the input file
-        // and stored in a TimeData abject
-        // In the input file specify
-        //
-        //    [time]
-        //        # Timestep
-        //        dt = 0.125      # Default: 1.0
-        //        # Simulation initial time
-        //        init_time = 0.0 # Default: 0.0
-        //        # Simulation end time
-        //        final_time = 10  # Default: 1.0
-        //        # Maximum number of timesteps
-        //        max_iter = 200000000   # Default: 99999999
-        //        # Export the solution every save_iter iterations
-        //        save_iter = 8   # Default: 1
-        //    [../]
-        //
-        // Create the TimeData object
-        BeatIt::TimeData datatime;
-        // Set it up using the input file
-        datatime.setup(data, "");
-        // Output on screen the stored variables
-        datatime.print();
-
-        // Create libMesh Equations systems
-        // This will hold the mesh and create the corresponding
-        // finite element spaces
-        //libMesh::EquationSystems es(mesh);
-
-
-        // Create the Electrophyiosiology model based on the input file
-        //
-        //   model = monowave
-        //   # The input parameters of the model are written
-        //   # in a section with the same name as 'model'
-        //   [monowave]
-        //       # PARAMETERS HERE
-        //   [../]
-        //
-        // Read the model from the input file
-        //libMesh::ExodusII_IO importer(mesh);
-        importer.read(mesh_name);
-        
-        std::cout << "Mesh information ..." <<std::endl;
-        mesh.print_info();
-
-        std::string model = data("model", "monowave");
-        std::cout << "Create Electrophysiology model ..." << std::endl;
-        // Create the model
-        BeatIt::ElectroSolver* solver = BeatIt::ElectroSolver::ElectroFactory::Create(model, equation_systems);
-        // Setup the EP model using the input file
-        std::cout << "Calling setup..." << std::endl;
-
-        solver->setup(data, model);
-
-        // Initialize systems
-        std::cout << "Eqution_systems info ..." << std::endl;
-        equation_systems.print_info();
-
-        // Set up initial conditions at time
-        std::cout << "Calling init ..." << std::endl;
-        solver->init(datatime.M_startTime);
-        // Now read the fibers if wanted
-
-        bool read_fibers = data("read_fibers", false);
-        if(read_fibers)
-        {
-            std::cout << "~~~~ ~~~~~~~~~~Reading fibers from input file~~~~ ~~~~~~~~~~" << std::endl;
-            mesh.prepare_for_use(); 
+    	std::cout << "~~~~ ~~~~~~~~~~Reading fibers from input file~~~~ ~~~~~~~~~~" << std::endl;
         // First show the elemental variables that can be imported
-            auto elemental_variables = importer.get_elem_var_names();
-            for (auto && var : elemental_variables) std::cout << var << std::endl;
-            solver->read_fibers(importer,1); //solver->fiber_system?
-        }
-
-        if (solver == NULL){
-            std::cout << " !!!!!!!!!!!!         SOLVER IS A NULL PTR !!!!!!!!" << std::endl;
-        }
-
-        // Export simulation parameters
-        // This will also export the fiber field
-        //    solver->save_parameters();
-        // Assemble matrices
-        std::cout << "Assembling matrices" << std::endl;
-
-        solver->assemble_matrices(datatime.M_dt);                           // PROBLEM HERE WHEN RUN IN PARALLEL
-        // output file counter
-
-        int save_iter = 0;
-        // Export initial condition at time
-    //    solver->save_exo_timestep(save_iter, datatime.M_time);
-        solver->save_potential(save_iter, datatime.M_startTime);
-    //    solver->save_parameters();
-
-        // Parameters to save the activation times
-        // A node is activated if the transmembrane potential > threshold
-        double threshold = data("threshold", -10.0);
-        // We export the activation times every at_save_iter iterations
-        int at_save_iter = data("at_save_iter", 25);
-
-        // Old parameters that define the method, not to be changed
-        // TODO: clean this part
-        std::string system_mass = data(model + "/diffusion_mass", "mass");
-        std::string iion_mass = data(model + "/reaction_mass", "lumped_mass");
-        bool useMidpointMethod = false;
-        int step0 = 0;
-        int step1 = 1;
-
-        //solver->save_parameters();
-
-
-        // Start loop in time
-        std::cout << "Time loop starts:" << std::endl;
-        // Control the time loop using the TimeData object
-        for (; datatime.M_iter < datatime.M_maxIter && datatime.M_time < datatime.M_endTime;)
-        {
-            // We are doing a new iteration
-            // let's update first the information in the TimeData object
-            datatime.advance();
-            // Ouput to screen the current time and the current iteration
-            std::cout << "Time:" << datatime.M_time << ", Iter: " << datatime.M_iter << std::endl;
-            // Advance the solution in time: u_n <- u_n+1
-            solver->advance();
-            // Solve ionic model and evaluate ionic currents
-            solver->solve_reaction_step(datatime.M_dt, datatime.M_time, step0, useMidpointMethod, iion_mass);
-            // Solve monodomain model
-            solver->solve_diffusion_step(datatime.M_dt, datatime.M_time, useMidpointMethod, iion_mass);
-            // Update the activation times
-            solver->update_activation_time(datatime.M_time, threshold);
-            //Export the solution if at the right timestep
-            if (0 == datatime.M_iter % datatime.M_saveIter)
-            {
-                // update output file counter
-                save_iter++;
-                // export current solution
-                solver->save_potential(save_iter, datatime.M_time);
-    //            solver->save_exo_timestep(save_iter, datatime.M_time);
-            }
-            // export the activation times if at the corresponding timestep
-            if (0 == datatime.M_iter % (at_save_iter * datatime.M_saveIter))
-            {
-                // export activation times
-                solver->save_activation_times(save_iter);
-            }
-
-        }
-
-        // // export activation times again
-        solver->save_activation_times(save_iter);
-
-        // delete solver before ending the simulation
-        // avoiding memory leaks
-        delete solver;
+        auto elemental_variables = importer.get_elem_var_names();
+        for (auto && var : elemental_variables) std::cout << var << std::endl;
+        solver->read_fibers(importer,1); //solver->fiber_system?
     }
 
+    if (solver == NULL){
+    	std::cout << " !!!!!!!!!!!!         SOLVER IS A NULL PTR !!!!!!!!" << std::endl;
+    }
+
+    // Export simulation parameters
+    // This will also export the fiber field
+    //    solver->save_parameters();
+    // Assemble matrices
+    std::cout << "Assembling matrices" << std::endl;
+
+    solver->assemble_matrices(datatime.M_dt);                           // PROBLEM HERE WHEN RUN IN PARALLEL
+    // output file counter
+
+    int save_iter = 0;
+    // Export initial condition at time
+//    solver->save_exo_timestep(save_iter, datatime.M_time);
+    solver->save_potential(save_iter, datatime.M_startTime);
+//    solver->save_parameters();
+
+    // Parameters to save the activation times
+    // A node is activated if the transmembrane potential > threshold
+    double threshold = data("threshold", -10.0);
+    // We export the activation times every at_save_iter iterations
+    int at_save_iter = data("at_save_iter", 25);
+
+    // Old parameters that define the method, not to be changed
+    // TODO: clean this part
+    std::string system_mass = data(model + "/diffusion_mass", "mass");
+    std::string iion_mass = data(model + "/reaction_mass", "lumped_mass");
+    bool useMidpointMethod = false;
+    int step0 = 0;
+    int step1 = 1;
+
+    //solver->save_parameters();
+
+
+    // Start loop in time
+    std::cout << "Time loop starts:" << std::endl;
+    // Control the time loop using the TimeData object
+    for (; datatime.M_iter < datatime.M_maxIter && datatime.M_time < datatime.M_endTime;)
+    {
+        // We are doing a new iteration
+        // let's update first the information in the TimeData object
+        datatime.advance();
+        // Ouput to screen the current time and the current iteration
+        std::cout << "Time:" << datatime.M_time << ", Iter: " << datatime.M_iter << std::endl;
+        // Advance the solution in time: u_n <- u_n+1
+        solver->advance();
+        // Solve ionic model and evaluate ionic currents
+        solver->solve_reaction_step(datatime.M_dt, datatime.M_time, step0, useMidpointMethod, iion_mass);
+        // Solve monodomain model
+        solver->solve_diffusion_step(datatime.M_dt, datatime.M_time, useMidpointMethod, iion_mass);
+        // Update the activation times
+        solver->update_activation_time(datatime.M_time, threshold);
+        //Export the solution if at the right timestep
+        if (0 == datatime.M_iter % datatime.M_saveIter)
+        {
+            // update output file counter
+            save_iter++;
+            // export current solution
+            solver->save_potential(save_iter, datatime.M_time);
+//            solver->save_exo_timestep(save_iter, datatime.M_time);
+        }
+        // export the activation times if at the corresponding timestep
+        if (0 == datatime.M_iter % (at_save_iter * datatime.M_saveIter))
+        {
+            // export activation times
+            solver->save_activation_times(save_iter);
+        }
+
+    }
+
+    // // export activation times again
+    solver->save_activation_times(save_iter);
+
+    // delete solver before ending the simulation
+    // avoiding memory leaks
+    delete solver;
+
+*/
     // The end
     std::cout << "Good luck with your simulation :P" << std::endl;
     return 0;

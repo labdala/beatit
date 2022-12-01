@@ -15,9 +15,15 @@
 #include <tuple>
 #include "Util/IO/io.hpp"
 #include <libmesh/boundary_mesh.h>
+#include "libmesh/equation_systems.h"
+#include "libmesh/vtk_io.h"
+#include "libmesh/nemesis_io.h"
+#include "libmesh/linear_implicit_system.h"
+#include "libmesh/explicit_system.h"
 
 int main(int argc, char ** argv)
 {
+    std::cout << "hello from beatit-tmp" << std::endl;
     // Initialize libmesh
     using namespace libMesh;
     // Import input file

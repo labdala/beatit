@@ -1123,6 +1123,7 @@ void Poisson::assemble_poisson(EquationSystems& es,
         // members will automatically zero out the matrix  and vector.
         Ke.resize(n_dofs, n_dofs);
 
+
         Fe.resize(n_dofs);
 
         // Now loop over the quadrature points.  This handles
@@ -1205,10 +1206,11 @@ void Poisson::assemble_poisson(EquationSystems& es,
 
         {
 
+
             // The following loop is over the sides of the element.
             // If the element has no neighbor on a side then that
             // side MUST live on a boundary of the domain.
-            for (auto side : elem->side_index_range()){
+            for (auto side : elem->side_index_range())
                 if (elem->neighbor_ptr(side) == nullptr)
                 {
                     // get boundary info
@@ -1267,12 +1269,10 @@ void Poisson::assemble_poisson(EquationSystems& es,
 
 
                         // Verify if the quadrature points are within the neighborhood of one of the id list points
-                        for (int jj = 0; jj < dirichlet_id_points.size(); jj++)
-                        {
+                        for (int jj = 0; jj < dirichlet_id_points.size(); jj++) {
                             libMesh::Point p_id(qface_point[qp] - dirichlet_id_points[jj]);
 
-                            if ((dirichlet_id_radius[jj]>0) && (dirichlet_id_radius[jj]<47) )
-                            {
+                            if ((dirichlet_id_radius[jj]>0) && (dirichlet_id_radius[jj]<47) ){
 								is_on_neighborhood = (p_id.norm() <= dirichlet_id_radius[jj]) ? 1 : 0;
 							    // imposing BC on sphere
 								if (is_on_neighborhood == 1){
@@ -1281,8 +1281,7 @@ void Poisson::assemble_poisson(EquationSystems& es,
 										break;
 								}
 							}
-                            if(dirichlet_id_radius[jj]==47)
-                            {
+                            if(dirichlet_id_radius[jj]==47){
 								// imposing BC on set IDs
 								 if(i_solution > 1){
 									 ExplicitSystem& s1 = es.get_system<ExplicitSystem>("u1");
@@ -1337,10 +1336,8 @@ void Poisson::assemble_poisson(EquationSystems& es,
                         }
                         // Right-hand-side contribution of the L2
                         // projection.
-                        for (unsigned int i = 0; i != n_dofs; i++)
-                        {
-                             if(cond1 || cond2 || cond3 || cond4)
-                             {
+                        for (unsigned int i = 0; i != n_dofs; i++) {
+                             if(cond1 || cond2 || cond3 || cond4){
                                 Fe(i) += JxW_face[qp] * penalty * elem_dirichlet_bc * phi_face[i][qp]; //dirichlet
                              }
                             else
@@ -1348,7 +1345,6 @@ void Poisson::assemble_poisson(EquationSystems& es,
                         }
                     }
                 }
-            }
         }
 
         // We have now finished the quadrature point loop,
@@ -1364,44 +1360,11 @@ void Poisson::assemble_poisson(EquationSystems& es,
         // and  NumericVector::add_vector() members do this for us.
         system.matrix->add_matrix(Ke, dof_indices);
         system.rhs->add_vector(Fe, dof_indices);
-
     }
-
-	// implement one point bc condition
-
-    double radius;
-    libMesh::Point p;
-    double x;
-    double y;
-    double z;
-    double bc_value;
-    for (int jj = 0; jj < dirichlet_id_points.size(); jj++) {
-    		   if(dirichlet_id_radius[jj]==49){
-    			   p = dirichlet_id_points[jj];
-    			   radius = 0.0125; // small enough to enclose only one node
-    			   x = p(0);
-    			   y = p(1);
-    			   z = p(2);
-    			   bc_value = dirichlet_bc_list[jj];
-    			   std::cout << "x= " <<x << " y= " <<y<< " z= " <<z<< " r= " <<radius << " bc_value= " <<bc_value   << std::endl;
-               }
-    }
-    // loop over all the nodes
-	for(auto & node : mesh.local_node_ptr_range() ){
-		libMesh::Point point = * node;
-        libMesh::Point laa_point(x,y,z);
-        laa_point -= point;
-        if(laa_point.norm()< radius){
-        	std::cout << " xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" << std::endl;
-			unsigned int dn = node->dof_number(system.number(), 0, 0);
-			double penalty = 1e8;
-			system.rhs->add(dn, bc_value*penalty);
-			system.matrix->add(dn, dn, penalty);
-	}
 
 }
 
-}
+
 
 
 // MAIN
@@ -1656,22 +1619,6 @@ int main(int argc, char ** argv)
 
         equation_systems.get_system("Poisson").solve();
 
-
-        // TEST
-
-        // the processor number
-		int rank = si.comm().rank();
-		// size of solution vector at each mesh node - global vector (including all the processors)
-		int size_vector = si.solution->size();
-		// size of solution vector at node in this processor - local vector
-		int local_size = si.solution->local_size();
-		int size_vector_poisson = equation_systems.get_system("Poisson").solution->size();
-		int local_size_poisson = equation_systems.get_system("Poisson").solution->local_size();
-		std::cout << "rank=" << rank << " , local_size=" <<local_size <<" , local_size_poisson=" <<local_size_poisson  << std::endl;
-		std::cout << "rank=" << rank << " , size_vector=" << size_vector << " , size_vector_poisson=" << size_vector_poisson << std::endl;
-		si.comm().barrier(); //all the processors have to be synchronized by this point before it proceeds
-		si.solution->close();
-
         // Copy the content of "u" (solution to Poisson problem) to "ui"
         *si.solution = *equation_systems.get_system("Poisson").solution; // "unique vector"
         si.update(); //distributes/copies the solution of the global on the shared interface > local processor vectors - "repeated vector"
@@ -1748,7 +1695,6 @@ int main(int argc, char ** argv)
 
 
 
-
     // Information about the time, such as
     // current iteration, timestep, final time etc
     // can be conveniently read from the input file
@@ -1778,7 +1724,7 @@ int main(int argc, char ** argv)
     // Create libMesh Equations systems
     // This will hold the mesh and create the corresponding
     // finite element spaces
-    //libMesh::EquationSystems es(mesh);
+    libMesh::EquationSystems es(mesh);
 
 
     // Create the Electrophyiosiology model based on the input file
@@ -1794,13 +1740,13 @@ int main(int argc, char ** argv)
     std::string model = data("model", "monowave");
     std::cout << "Create Electrophysiology model ..." << std::endl;
     // Create the model
-    BeatIt::ElectroSolver* solver = BeatIt::ElectroSolver::ElectroFactory::Create(model, equation_systems);
+    BeatIt::ElectroSolver* solver = BeatIt::ElectroSolver::ElectroFactory::Create(model, es);
     // Setup the EP model using the input file
     std::cout << "Calling setup..." << std::endl;
     solver->setup(data, model);
     // Initialize systems
     std::cout << "Calling init ..." << std::endl;
-    //equation_systems.print_info();
+    es.print_info();
     // Set up initial conditions at time
     solver->init(datatime.M_startTime);
     // Now read the fibers if wanted
@@ -1838,8 +1784,6 @@ int main(int argc, char ** argv)
     bool useMidpointMethod = false;
     int step0 = 0;
     int step1 = 1;
-
-    //solver->save_parameters();
 
 
     // Start loop in time

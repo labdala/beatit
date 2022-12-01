@@ -69,6 +69,7 @@ int main(int argc, char ** argv)
     // If we passed a specific filename for the mesh let'd read that
     if ("NONE" != mesh_name)
     {
+    	std::cout << "Reading input mesh" << std::endl;
         // Use the Importer to read
         //importer.read(mesh_name);
         // If we did not use the importer we would have done
@@ -178,20 +179,26 @@ int main(int argc, char ** argv)
     BeatIt::ElectroSolver* solver = BeatIt::ElectroSolver::ElectroFactory::Create(model, es);
     // Setup the EP model using the input file
     std::cout << "Calling setup..." << std::endl;
-    solver->setup(data, model);
+    solver->setup(data, model);                     	                                                 // see line 157 - Monodomain.cpp
     // Initialize systems
     std::cout << "Calling init ..." << std::endl;
     es.print_info();
+
     // Set up initial conditions at time
-    solver->init(datatime.M_startTime);
+    solver->init(datatime.M_startTime);                                                                 //  PROBLEM HAPPENS HERE IF USE GEOMETRY
+
     // Now read the fibers if wanted
     bool read_fibers = data("read_fibers", false);
     if(read_fibers)
     {
+    	std::cout << "------------Reading fibers from input file -----------" << std::endl;
         // First show the elemental vcariables that can be imported
         auto elemental_variables = importer.get_elem_var_names();
         for (auto && var : elemental_variables) std::cout << var << std::endl;
         solver->read_fibers(importer,1);
+    }
+    else{
+    	std::cout << "------------NOT Reading fibers from input file -----------" << std::endl;
     }
     // Export simulation parameters
     // This will also export the fiber field

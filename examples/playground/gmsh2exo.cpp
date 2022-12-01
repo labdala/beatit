@@ -20,16 +20,18 @@ int main(int argc, char ** argv)
     LibMeshInit init(argc, argv);
     // Read input file
     GetPot commandLine ( argc, argv );
-    std::string datafile_name = commandLine.follow ( "data.beat", 2, "-i", "--input" );
+    std::string datafile_name = commandLine.follow ("data.beat", 2, "-i", "--input" );
     GetPot data(datafile_name);
-    std::string mesh_file = data("mesh", "NONE");
+    std::string mesh_file =data("mesh", "NONE");
     ParallelMesh mesh(init.comm());
-    mesh.read(mesh_file + ".msh");
+    std::cout << "Reading mesh " << mesh_file << std::endl;
+   // mesh.read(mesh_file + ".msh");
+    mesh.read(mesh_file + ".e");
     mesh.print_info();
     // Refine mesh
     std::string output_name = data("output", mesh_file);
     ExodusII_IO (mesh).write(output_name+"_m0.e");
-    int nref = data("nref", 0);
+    int nref =1;// data("nref", 0);
     if(nref > 0)
     {
       for(int nr = 1; nr <= nref; nr++)

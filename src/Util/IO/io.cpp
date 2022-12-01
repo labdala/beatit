@@ -172,4 +172,3 @@ void serial_mesh_partition(const libMesh::Parallel::Communicator & comm, std::st
 }
 
 } // namespace BeatIt
-

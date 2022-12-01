@@ -84,6 +84,8 @@
 #include "Elasticity/Materials/IsotropicMaterial.hpp"
 #include "Elasticity/Materials/BenNeohookean.hpp"
 
+#include "libmesh/boundary_info.h"
+
 namespace BeatIt
 {
 
@@ -692,8 +694,10 @@ void DynamicElasticity::assemble_residual(
             // On the boundary we use strong boundary conditions for the time being
             if (elem->neighbor_ptr(side) == libmesh_nullptr)
             {
-
-                const unsigned int boundary_id = mesh.boundary_info->boundary_id(elem, side);
+		unsigned int n_boundary_ids=mesh.boundary_info->n_boundary_ids(elem,side);
+		std::vector<short int> boundary_ids_vec(n_boundary_ids);
+		mesh.boundary_info->boundary_ids(elem,side, boundary_ids_vec);
+                const unsigned int boundary_id = boundary_ids_vec[0];
 
                 auto bc = M_bch.get_bc(boundary_id);
 

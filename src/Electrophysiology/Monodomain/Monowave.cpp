@@ -140,24 +140,30 @@ void Monowave::setup_systems(GetPot& data, std::string section)
     // Starts by creating the equation systems
     // 1) ADR
     std::cout << "* MONOWAVE: Creating new System for the monowave diffusion reaction equation" << std::endl;
-    ElectroSystem& monodomain_system = M_equationSystems.add_system<ElectroSystem>(M_model);
+    ElectroSystem& monodomain_system = M_equationSystems.add_system<ElectroSystem>(M_model); 
+    std::cout << "* MONOWAVE: Adding variable Q to the monowave diffusion reaction equation" << std::endl;
     // TO DO: Generalize to higher order
     monodomain_system.add_variable("Q", M_order, M_FEFamily);
     // Add 3 matrices
+    std::cout << "* MONOWAVE: Adding 3 matrices to the monowave diffusion reaction equation" << std::endl;
     monodomain_system.add_matrix("lumped_mass");
     monodomain_system.add_matrix("high_order_mass");
     // Add lumped mass matrix
+    std::cout << "* MONOWAVE: Adding lumped mass matrix to the monowave diffusion reaction equation" << std::endl;
     monodomain_system.add_vector("lumped_mass_vector");
     monodomain_system.add_matrix("mass");
     monodomain_system.add_matrix("stiffness");
     monodomain_system.add_vector("aux1");
     monodomain_system.add_vector("aux2");
 
+    std::cout << "* MONOWAVE: Insert M_model" << std::endl;
     M_exporterNames.insert(M_model);
 
+    std::cout << "* MONOWAVE: Initialize monodomain system" << std::endl;
     monodomain_system.init();
 
     // WAVE
+    std::cout << "* MONOWAVE: Create wave_system" << std::endl;
     ElectroSystem& wave_system = M_equationSystems.add_system<ElectroSystem>("wave");
     wave_system.add_variable("V", M_order, M_FEFamily);
     M_exporterNames.insert("wave");
@@ -166,6 +172,7 @@ void Monowave::setup_systems(GetPot& data, std::string section)
     // ///////////////////////////////////////////////////////////////////////
     // ///////////////////////////////////////////////////////////////////////
     // 2) ODEs
+    std::cout << "* MONOWAVE: setup_ODE_systems" << std::endl;
     setup_ODE_systems(data, section);
     // Add the applied current to this system
     std::cout << "* MONOWAVE: Creating auxiliary explicit systems " << std::endl;

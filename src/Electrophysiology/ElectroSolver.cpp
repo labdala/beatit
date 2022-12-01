@@ -356,6 +356,7 @@ namespace BeatIt
         }
 
 
+
         iion_system.get_vector("ionic_model_map").close();
         std::cout << "* ElectroSolver: Setup ionic model vector: " << std::endl;
 
@@ -363,6 +364,19 @@ namespace BeatIt
         ElectroSystem& wave_system = M_equationSystems.get_system < ElectroSystem > ("wave");
         // Setting initial conditions
         ElectroSystem& system = M_equationSystems.get_system < ElectroSystem > (M_model);
+
+
+
+
+
+        std::cout<< "HI!" << std::endl;
+
+
+
+
+
+
+
 
         libMesh::MeshBase::const_node_iterator node = mesh.local_nodes_begin();
         const libMesh::MeshBase::const_node_iterator end_node = mesh.local_nodes_end();
@@ -390,6 +404,7 @@ namespace BeatIt
             //nn->print();
             //nn->print_dof_info();
             //std::cout << std::endl << n_var << ", " << n_dofs << std::endl;
+            // check if we are in the tissue
             if (n_var == n_dofs)
             {
                 dof_map.dof_indices(nn, dof_indices_Q, 0);
@@ -428,6 +443,7 @@ namespace BeatIt
 //                        std::cout << " set!" << std::endl;
                     }
                 }
+                // check if we are in bath for the bidomain -> do not solve EP
                 else
                 {
                     for(auto && ionicModel : M_ionicModelPtrMap)
@@ -439,6 +455,21 @@ namespace BeatIt
                 }
             }
         }
+
+
+
+
+
+
+
+        std::cout<< "HI! this is after for loop" << std::endl;
+
+
+
+
+
+
+
         wave_system.solution->close();
 
         for (auto && name : M_ionic_models_systems_name_vec)
@@ -484,6 +515,23 @@ namespace BeatIt
 
 //        std::cout << "* Old stuff: " << std::endl;
 
+
+
+
+
+
+        std::cout<< "HI! this is after for loop 2" << std::endl;
+
+
+
+
+
+
+
+
+
+
+
         system.solution->close();
         system.old_local_solution->close();
         system.older_local_solution->close();
@@ -513,8 +561,35 @@ namespace BeatIt
         }
         procID_system.solution->close();
 
+
+
+
+
+
+        std::cout<< "HI! this is before init systems" << std::endl;
+
+
+
+
+
+
+
         // Call specific system initializations
         init_systems(time);
+
+
+
+
+
+
+        std::cout<< "HI! this is after init systems" << std::endl;
+
+
+
+
+
+
+
 //    M_linearSolver =  libMesh::LinearSolver<libMesh::Number>::build( M_equationSystems.comm() );
         typedef libMesh::PetscLinearSolver<libMesh::Number> PetscSolver;
         M_linearSolver.reset(new PetscSolver(M_equationSystems.comm()));
@@ -1294,7 +1369,11 @@ namespace BeatIt
                 {
                     if (elem->neighbor_ptr(side) == libmesh_nullptr)
                     {
-                        const unsigned int boundary_id = mesh.boundary_info->boundary_id(elem, side);
+	                unsigned int n_boundary_ids=mesh.boundary_info->n_boundary_ids(elem,side);
+       		        std::vector<short int> boundary_ids_vec(n_boundary_ids);
+                	mesh.boundary_info->boundary_ids(elem,side, boundary_ids_vec);
+                	const unsigned int boundary_id = boundary_ids_vec[0];
+
                         if (boundary_id == boundID)
                         {
                             wave_system.solution->set(dof_indices[0], value);

@@ -896,6 +896,25 @@ void Monowave::assemble_cg_matrices(double dt)
             }
         }
 
+        // std::cout<< "--------------------------" << std::endl;
+        // std::cout << " Ke" << std::endl;
+        // std::cout << Ke << std::endl;
+        // // Calculate Mel^-1*Ke
+        // for (unsigned int i = 0; i < Ke.m(); i++)
+        // {
+        //     //invert lumped mass
+        //     Mel(i, i) = 1/Mel(i, i);
+        //     Ke(i,i) = Ke(i,i)*(Mel(i,i));
+        // }   
+
+        // std::cout<< "--------------------------" << std::endl;
+        // std::cout << " Ke/Mel" << std::endl;
+        // std::cout << Ke << std::endl;
+        // std::cout<< "--------------------------" << std::endl;
+        // std::cout << " Mel^-1" << std::endl;
+        // std::cout << Mel << std::endl;
+
+
 //        int random_el = rand() % 100 + 1;
 //        if(random_el <= 5)
 //        {
@@ -1520,14 +1539,15 @@ void Monowave::form_system_matrix(double dt, bool /*useMidpoint */, const std::s
 //    if(tau>0)
     {
         // S = Cm M Q^n+1 + tau / (c * dt) * Cm * M dQ + c dt K Q^n+1
-        monodomain_system.matrix->add(Cm * (1.0 + tau / (cdt)), monodomain_system.get_matrix(mass));
-        monodomain_system.matrix->add(cdt, monodomain_system.get_matrix("stiffness"));
+        monodomain_system.matrix->add(1.0, monodomain_system.get_matrix(mass));
+        //monodomain_system.matrix->add(cdt, monodomain_system.get_matrix("stiffness"));
     }
 //    else
 //    {
 //        monodomain_system.matrix->add(Cm / cdt, monodomain_system.get_matrix(mass));
 //        //monodomain_system.matrix->add(1.0, monodomain_system.get_matrix("stiffness"));
 //    }
+ //   std::cout << "wave_system.matrix= \n" << *monodomain_system.matrix << std::endl;
 }
 
 void Monowave::form_system_rhs(double dt, bool useMidpoint, const std::string &mass)
@@ -1620,77 +1640,38 @@ void Monowave::form_system_rhs(double dt, bool useMidpoint, const std::string &m
     {
         // SBDF1
         double cdt = dt;
-        // RHS WAVE = Cm * tau / cdt * M * Q^n
-        //          - K * Z^n                            // Z^n = V^n
-        //          - M * I^n - tau * M * dI^n - M * Istim
-
-        // First compute -(I^n + tau * dI^n + Istim)
-        // I^n
         total_current.add(-1.0, *iion_system.solution);
         // tau * dI^n
         total_current.add(-tau, iion_system.get_vector("diion"));
-        // Istim
+        // -Istim
         total_current.add(-1.0, *istim_system.solution);
 
-        // Then compute M * ( I^n + tau * dI^n + Istim ) = M * total_current
+        // Then compute - M * total_current
         // adding it to the system RHS
         monodomain_system.get_matrix(mass).vector_mult_add(*monodomain_system.rhs, total_current);
 
-        //if(tau>0)
-        {
-            // Second we compute the time derivative term
-            // Cm * tau / cdt * M * Q^n
-            //
-            // We store Cm * tau / cdt * Q^n in aux1
+        // // M * aux1
+        // monodomain_system.get_matrix(M_systemMass).vector_mult_add(*monodomain_system.rhs, aux1);// We store Cm * tau / cdt * Q^n in aux1
             aux1.add(Cm * tau / cdt, *monodomain_system.old_local_solution);
-            // Then we added to the RHS
+             // Then we added to the RHS
             // M * aux1
             monodomain_system.get_matrix(M_systemMass).vector_mult_add(*monodomain_system.rhs, aux1);
 
-            // Third compute - K * Z^n
-            // We store -Z^n in aux2, but
-            aux2.add(-1.0, *wave_system.old_local_solution);
-            // Then we added to the RHS
-            // K * aux2
-            monodomain_system.get_matrix("stiffness").vector_mult_add(*monodomain_system.rhs, aux2);
-        }
-//            else
-//            {
-//                // Second we compute the time derivative term
-//                // Cm * tau / cdt * M * Q^n
-//                //
-//                // We store Cm * tau / cdt * Q^n in aux1
-//                aux1.add(Cm/cdt, *monodomain_system.old_local_solution);
-//                // Then we added to the RHS
-//                // M * aux1
-//                monodomain_system.get_matrix(M_systemMass).vector_mult_add(*monodomain_system.rhs, aux1);
-//            }
+        // Third compute - K * Z^n
+        // We store -Z^n in aux2, but
+        aux2.add(-1.0, *wave_system.old_local_solution);
+        // Then we added to the RHS
+        // K * aux2
+        monodomain_system.get_matrix("stiffness").vector_mult_add(*monodomain_system.rhs, aux2);
+       std::cout   << "------------------------\n" 
+                // << "Mel_times_Ke = " << out
+                << ", ws.solution = " << wave_system.solution->linfty_norm()
+                << ", aux1= " << aux1.linfty_norm()
+                << ", aux2= " << aux2.linfty_norm()
+                << ", iion = " << iion_system.solution->linfty_norm()
+                << ", istim = " << istim_system.solution->linfty_norm()
+                << std::endl;
     }
-//    monodomain_system.get_matrix(mass).vector_mult_add(*monodomain_system.rhs, *iion_system.solution);
-//
-//    monodomain_system.get_matrix(mass).vector_mult_add(*monodomain_system.rhs, *istim_system.solution);
-//    if (M_equationType == EquationType::Wave)
-//    {
-//        //std::cout << "Equation type: Wave" << std::endl;
-//        //iion_system.get_vector("diion").pointwise_mult(*monodomain_system.older_local_solution, iion_system.get_vector("diion"));
-//        iion_system.get_vector("diion").scale(tau);
-//        monodomain_system.get_matrix(mass).vector_mult_add(*monodomain_system.rhs, iion_system.get_vector("diion"));
-//        monodomain_system.rhs->scale(dt);
-//
-//        //*monodomain_system.old_local_solution = *monodomain_system.older_local_solution;
-//        monodomain_system.get_vector("aux1") = *monodomain_system.old_local_solution;
-//        // aux1 = + tau  * M * Q^n
-//        monodomain_system.get_vector("aux1").scale(tau * Cm);
-//
-//        //std::cout << "Equation type: Wave" << std::endl;
-//        monodomain_system.get_matrix(M_systemMass).vector_mult_add(*monodomain_system.rhs, monodomain_system.get_vector("aux1"));
-//
-//        // - dt  * K * V^n
-//        monodomain_system.get_vector("aux2") = *wave_system.old_local_solution;
-//        monodomain_system.get_vector("aux2").scale(-dt);
-//        monodomain_system.get_matrix("stiffness").vector_mult_add(*monodomain_system.rhs, monodomain_system.get_vector("aux2"));
-//        //std::cout << "Equation type: Wave" << std::endl;
-
 }
 
 void Monowave::solve_diffusion_step(double dt, double time, bool useMidpoint, const std::string &mass, bool reassemble)
@@ -1734,7 +1715,7 @@ void Monowave::solve_diffusion_step(double dt, double time, bool useMidpoint, co
         if (0 < M_timestep_counter && TimeIntegrator::SecondOrderIMEX == M_timeIntegrator)
         {
             // Use BDF2
-            // V^n+1 = 4/3 V^n - 1/3 V^n + 2/3 dt * Q^n+1
+            // V^n+1 = 4/3 V^n - 1/3 V^n-1 + 2/3 dt * Q^n+1
             *wave_system.solution = *monodomain_system.solution;
             wave_system.solution->scale(2.0 / 3.0 * dt);
             wave_system.solution->add(4.0 / 3.0, *wave_system.old_local_solution);

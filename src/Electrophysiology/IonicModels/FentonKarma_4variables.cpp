@@ -174,7 +174,7 @@ FentonKarma4v::setup(GetPot& data, std::string sect)
     M_cso = ( cso > 0) ? cso : M_cso;
 }
 
-
+//forward euler for gating variables
 void
 FentonKarma4v::updateVariables(std::vector<double>& variables, double appliedCurrent, double dt)
 {
@@ -182,6 +182,8 @@ FentonKarma4v::updateVariables(std::vector<double>& variables, double appliedCur
     double v = variables[1];
     double w = variables[2];
     double s = variables[3];
+
+    //std::cout << "FK: u=" << u << ", v = " << v << ", w = " << w << ", s = " << s << std::endl;
 
     double Humuc = H(u-M_uc);
     double Humuv = H(u-M_uv);

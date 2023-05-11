@@ -62,7 +62,7 @@ enum class EquationTypeExplicit { ReactionDiffusion,
                           ParabolicEllipticHyperbolic,
                           ParabolicParabolicHyperbolic   };
 enum class ModelTypeExplicit { Monodomain, Bidomain, BidomainWithBath };
-enum class TimeIntegratorExplicit { FirstOrderSSPRK2}; // SBDF2
+enum class TimeIntegratorExplicit { ForwardEuler, SSPRK2 }; // SBDF2
 
 enum class GroundExplicit { Nullspace,
                     GroundNode,

@@ -246,7 +246,7 @@ int main(int argc, char ** argv)
             save_iter++;
             // export current solution
             solver->save_potential(save_iter, datatime.M_time);
-//            solver->save_exo_timestep(save_iter, datatime.M_time);
+            solver->save_exo_timestep(save_iter, datatime.M_time);
         }
         // export the activation times if at the corresponding timestep
         if (0 == datatime.M_iter % (at_save_iter * datatime.M_saveIter))

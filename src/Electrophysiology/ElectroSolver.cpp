@@ -1528,6 +1528,17 @@ namespace BeatIt
                     if (TimeIntegrator::FirstOrderIMEX == M_timeIntegrator)
                     {
                         ionicModelPtr->updateVariables(values, istim, dt);
+                        //   // l2-norm
+                        // double accum = 0.;
+                        // for (int i = 0; i < values.size(); ++i) {
+                        //     accum += values[i] * values[i];
+                        // }
+                        // double norm = sqrt(accum);
+                    
+                        // std::cout 
+                        // << "istim = "<< istim
+                        // << ", norm = " <<  norm << std::endl;
+
 
                     }
                     else // using SBDF2
@@ -1565,6 +1576,11 @@ namespace BeatIt
                     //       I keep everything as it was before I started the implementation of SBDF2
                     if (ionicModelPtr->isSecondOrderImplemented()) dIion = ionicModelPtr->evaluateIonicCurrentTimeDerivative(values, gating_rhs, dt, M_meshSize);
                     else dIion = ionicModelPtr->evaluateIonicCurrentTimeDerivative(values, old_values, dt, M_meshSize);
+
+                    // std::cout 
+                    // << ", istim" << istim
+                    // << ", ionicModelPtr->evaluateIonicCurrent(values, istim, dt) = " << ionicModelPtr->evaluateIonicCurrent(values, istim, dt)
+                    // << std::endl;
 
                     double Isac = 0.0;
                     if (I4f_ptr)

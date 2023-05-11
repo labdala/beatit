@@ -82,7 +82,7 @@ namespace BeatIt
             : M_equationSystems(es), M_exporter(), M_exporterNames(), M_ionicModelExporter(), M_ionicModelExporterNames(), M_parametersExporter(), M_parametersExporterNames(), M_outputFolder(), M_datafile(), M_pacing_i(), M_pacing_e(), M_linearSolver(), M_anisotropy(
                     AnisotropyExplicit::Orthotropic), M_equationType(EquationTypeExplicit::ParabolicEllipticBidomain), M_timeIntegratorType(DynamicTimeIntegratorType::Implicit), M_useAMR(false), M_assembleMatrix(
                     true), M_systemMass("lumped"), M_intraConductivity(), M_extraConductivity(), M_conductivity(), M_meshSize(1.0), M_model(model), M_ground_ve(GroundExplicit::Nullspace), M_timeIntegrator(
-                    TimeIntegratorExplicit::FirstOrderSSPRK2), M_timestep_counter(0), M_symmetricOperator(false), M_elapsed_time(), M_num_linear_iters(0), M_order(libMesh::FIRST), M_FEFamily(libMesh::LAGRANGE)
+                    TimeIntegratorExplicit::ForwardEuler), M_timestep_counter(0), M_symmetricOperator(false), M_elapsed_time(), M_num_linear_iters(0), M_order(libMesh::FIRST), M_FEFamily(libMesh::LAGRANGE)
     {
         // TODO Auto-generated constructor stub
 
@@ -179,8 +179,16 @@ namespace BeatIt
         Iion_system.add_variable("iion", M_order, M_FEFamily);
         Iion_system.add_vector("ionic_model_map");
         Iion_system.add_vector("total_current");
-        Iion_system.add_vector("iion_k1");
-        Iion_system.add_vector("iion_k2");
+        
+        //Forward Euler approximation for w^n
+        Iion_system.add_vector("w_n_fe");
+
+        //Forward Euler approximation for w^n+1
+        Iion_system.add_vector("w_np1_fe");
+        
+        //Forward Euler approximation for Iion^n
+        Iion_system.add_vector("Iion_n_fe");
+        
         Iion_system.init();
         M_ionicModelExporterNames.insert("iion");
 
@@ -271,13 +279,13 @@ namespace BeatIt
         }
         if (2 == time_integrator_order && isSecondORderImplemented)
         {
-            std::cout << "ELECTROSOLVEREXPLICIT: using SBDF order 2 " << std::endl;
-            throw std::runtime_error("second order time-stepping not implemented yet");
+            std::cout << "ELECTROSOLVEREXPLICIT: using SSPRK2 " << std::endl;
+             M_timeIntegrator = TimeIntegratorExplicit::SSPRK2;
         }
         else
         {
-            std::cout << "ELECTROSOLVEREXPLICIT: using SBDF order 1 " << std::endl;
-            M_timeIntegrator = TimeIntegratorExplicit::FirstOrderSSPRK2;
+            std::cout << "ELECTROSOLVEREXPLICIT: using Forward Euler " << std::endl;
+            M_timeIntegrator = TimeIntegratorExplicit::ForwardEuler;
         }
 
         // ///////////////////////////////////////////////////////////////////////
@@ -1305,6 +1313,13 @@ namespace BeatIt
         iion_system.solution->zero();
 
         iion_system.old_local_solution->zero();
+        
+        iion_system.get_vector("w_n_fe").zero();
+        iion_system.get_vector("w_np1_fe").zero();
+        iion_system.get_vector("Iion_n_fe").zero();
+
+        auto &V_n_fe = wave_system.get_vector("V_n_fe");
+        auto &V_np1_fe = wave_system.get_vector("V_np1_fe");
 
         double Cm = 1.0;        //M_ionicModelPtr->membraneCapacitance();
 
@@ -1359,7 +1374,8 @@ namespace BeatIt
                 if (M_pacing) istim = M_pacing->eval(p, time);
 
                 double Iion_old = 0.0;
-                double v = (*wave_system.old_local_solution)(dof_indices_V[0]); //V^n
+                double v = (*wave_system.old_local_solution)(dof_indices_V[0]); //V^n-1
+                double v_n = V_n_fe(dof_indices_V[0]);  //V^n estimate
                 Iion_old = (*iion_system.old_local_solution)(dof_indices_istim[0]); // gating
                 int key = iion_system.get_vector("ionic_model_map")(dof_indices_istim[0]);
                 auto it_ionic_model = M_ionicModelPtrMap.find(key);
@@ -1385,11 +1401,15 @@ namespace BeatIt
                     int num_vars = ionic_model_system.n_vars();
                    // std::cout << "ionic_model_system_name: " << ionicModelPtr->ionicModelName() << ", num_vars: " << num_vars << std::endl;
                     std::vector<double> values(num_vars + 1, 0.0);
-                    std::vector<double> k1(num_vars + 1, 0.0);
+                    std::vector<double> k1w(num_vars + 1, 0.0), k2w(num_vars + 1, 0.0);
                     values[0] = v; //V^n
                     std::vector<double> old_values(num_vars + 1, 0.0);
                     const libMesh::DofMap & dof_map_gating = ionic_model_system.get_dof_map();
                     dof_map_gating.dof_indices(nn, dof_indices_gating);
+                    //Iion^n_1
+                    double Iion;
+                    //Iion^n
+                    double Iion_n_fe =0;
 
                     for (int nv = 0; nv < num_vars; ++nv)
                     {
@@ -1399,36 +1419,43 @@ namespace BeatIt
 
                     }
 
-                    if (TimeIntegratorExplicit::FirstOrderSSPRK2 == M_timeIntegrator) 
-                    {
+                    // if (TimeIntegratorExplicit::ForwardEuler == M_timeIntegrator) 
+                    // {
+                    //     // Updating variables from ionic ODE system
+                    //     ionicModelPtr->updateVariables(values, istim, dt); 
+                    //     Iion = ionicModelPtr->current_scaling() * ionicModelPtr->evaluateIonicCurrent(values, istim, dt);
+                    // }
+                    // else if (TimeIntegratorExplicit::SSPRK2 == M_timeIntegrator) {
                         // Updating variables from ionic ODE system
-                        // Calculate k1
                         ionicModelPtr->updateVariables(values, istim, dt); 
-                        k1  = values;
-
-                        // //Calculate k2 and store in values
-                        // ionicModelPtr->updateVariables(values, istim, dt); 
                         
-                        // l2-norm
-                        double accum = 0.;
-                        for (int i = 0; i < values.size(); ++i) {
-                            accum += values[i] * values[i];
-                        }
-                        double norm = sqrt(accum);
-                    
-                        // std::cout 
-                        // << "istim = "<< istim
-                        // << ", norm = " <<  norm << std::endl;
+                        // Calculate Iion at n-1
+                        Iion = ionicModelPtr->current_scaling() * ionicModelPtr->evaluateIonicCurrent(values, istim, dt);
+                        
+                        // // Calculate k1w = w^n (calculated using forward Euler)
+                        // k1w  = values;
+                        // // Update first entry of k1w after we call updateVariables
+                        // k1w[0] = v_n; // k1v = v^n_fe = V^n
 
-                        // // SSP-RK2: values = (k1+values)/2
-                        // std::transform (k1.begin(), k1.end(), values.begin(), values.begin(), std::plus<double>());
-                        // values =  values / 2.0; 
-                    }
-                    else // Second order time step - implementation reference : ElectroSolver.cpp
-                    {
-                      throw std::runtime_error("second order time-stepping not implemented yet");
-                    }
-                    double Iion = ionicModelPtr->current_scaling() * ionicModelPtr->evaluateIonicCurrent(values, istim, dt);
+                        // // Calculate estimate for Iion^n using Forward Euler
+                        // // Iion_n_fe = Iion(k1v,k1w)
+                        // Iion_n_fe = ionicModelPtr->current_scaling() * ionicModelPtr->evaluateIonicCurrent(k1w, istim, dt);
+                        
+                        // // Calculate the estimate for gating variables w^n using SSPRK2
+                        // // First, initialize k2w with values
+                        // k2w = k1w;
+                        // // Update first entry of k2w before we call updateVariables
+                        // k2w[0] = v_n; // k1v = v^n_fe = V^n
+                        // // Then calculate k2 - estimate for w^n+1 (calculated using forward Euler)
+                        // ionicModelPtr->updateVariables(k2w, istim, dt); 
+                        // // SSP-RK2: values = (w^n-1+w^n+1)/2
+                        // std::transform (old_values.begin(), old_values.end(), k2w.begin(), values.begin(), std::plus<double>());
+                        // values = values/2;
+                    // }
+                    // else 
+                    // {
+                    //   std::cout << "* ElectroSolverExplicit: The time stepping method specified has not been implemented" << std::endl;
+                    // }
                     // Recall -- it was the case: gating_rhs[0] = Q^n
                     //  For now, assuming time-stepping is only first order
 
@@ -1442,6 +1469,9 @@ namespace BeatIt
                     }
                     Iion += Isac;
 
+                    // iion_system.get_vector("w_n_fe").set(dof_indices_istim[0], k1w);
+                    // iion_system.get_vector("w_np1_fe").set(dof_indices_istim[0], k2w);
+                    iion_system.get_vector("Iion_n_fe").set(dof_indices_istim[0], Iion_n_fe);
                     iion_system.solution->set(dof_indices_istim[0], Iion); // contains Istim
                     istim_system.solution->set(dof_indices_istim[0], istim);
                     istim_system.get_vector("stim_i").set(dof_indices_istim[0], stim_i); //Istim^n+1
@@ -1466,6 +1496,9 @@ namespace BeatIt
         istim_system.get_vector("stim_e").close();
         istim_system.get_vector("surf_stim_i").close();
         istim_system.get_vector("surf_stim_e").close();
+        iion_system.get_vector("w_n_fe").close();
+        iion_system.get_vector("w_np1_fe").close();
+        iion_system.get_vector("Iion_n_fe").close();
 
         for (auto && name : M_ionic_models_systems_name_vec)
         {
